@@ -65,7 +65,6 @@ let
       pack_package packages/telemetry telemetry
       pack_package packages/schema schema
       pack_package packages/ai ai
-      pack_package packages/tui tui
       pack_package packages/agent agent
       pack_package packages/codemode codemode
       pack_package packages/mcp mcp
@@ -87,7 +86,6 @@ let
       "node_modules/@earendil-works/pi-mcp" = workspacePackages + "/mcp.tgz";
       "node_modules/@earendil-works/pi-schema" = workspacePackages + "/schema.tgz";
       "node_modules/@earendil-works/pi-telemetry" = workspacePackages + "/telemetry.tgz";
-      "node_modules/@earendil-works/pi-tui" = workspacePackages + "/tui.tgz";
     };
   };
 in
@@ -147,17 +145,6 @@ stdenv.mkDerivation {
   installCheckPhase = ''
     runHook preInstallCheck
     test "$("$out/bin/pi" --version)" = "${packageJson.version}"
-    # Load host-platform TUI helpers directly so missing native dependencies
-    # fail the build rather than silently disabling clipboard support.
-    ${nodejs}/bin/node -e \
-      "const fs = require('node:fs');
-       const path = require('node:path');
-       const dir = '$out/lib/pi/node_modules/@earendil-works/pi-tui/native/' + process.platform + '/prebuilds/' + process.platform + '-' + process.arch;
-       if (fs.existsSync(dir)) {
-         for (const file of fs.readdirSync(dir)) {
-           if (file.endsWith('.node')) require(path.join(dir, file));
-         }
-       }"
     ${nodejs}/bin/node -e \
       "require('$out/lib/pi/node_modules/@silvia-odwyer/photon-node')"
     runHook postInstallCheck

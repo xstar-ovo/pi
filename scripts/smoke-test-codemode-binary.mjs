@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+// Drives a built pi binary over its HTTP transport (POST /prompt, SSE /events) against a fake
+// OpenAI-compatible provider, so the codemode worker inside the binary is exercised end to end.
 
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const WORKER_MARKER = "PI_CODEMODE_WORKER_OK";
 const SUCCESS_MARKER = "PI_CODEMODE_BINARY_SMOKE_OK";
@@ -46,6 +49,33 @@ function toolResultContainsMarker(body) {
 			(message) => message?.role === "tool" && JSON.stringify(message.content).includes(WORKER_MARKER),
 		)
 	);
+}
+
+async function freePort() {
+	const server = createServer();
+	await new Promise((resolveListen, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolveListen);
+	});
+	const address = server.address();
+	if (!address || typeof address === "string") throw new Error("Free-port probe did not bind to a TCP port");
+	await new Promise((resolveClose) => server.close(resolveClose));
+	return address.port;
+}
+
+async function waitForServer(baseUrl, child) {
+	const deadline = Date.now() + TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		if (child.exitCode !== null) throw new Error(`pi exited before serving HTTP (exit ${child.exitCode})`);
+		try {
+			const response = await fetch(`${baseUrl}/state`);
+			if (response.ok) return;
+		} catch {
+			// Not listening yet.
+		}
+		await delay(100);
+	}
+	throw new Error(`Timed out waiting for ${baseUrl}/state`);
 }
 
 async function main() {
@@ -91,6 +121,7 @@ async function main() {
 		]);
 	});
 
+	let child;
 	try {
 		await new Promise((resolveListen, reject) => {
 			server.once("error", reject);
@@ -112,6 +143,8 @@ async function main() {
 			}),
 		);
 
+		const port = await freePort();
+		const baseUrl = `http://127.0.0.1:${port}`;
 		const piArgs = [
 			"--provider",
 			"codemode-smoke",
@@ -119,17 +152,15 @@ async function main() {
 			"codemode-smoke",
 			"--tools",
 			"codemode",
-			"--print",
 			"--no-session",
 			"--offline",
 			"--no-context-files",
 			"--no-skills",
 			"--no-prompt-templates",
-			"--no-themes",
-			"Run the codemode binary smoke test.",
+			`--http=${port}`,
 		];
 		const javaScript = extname(binary) === ".js";
-		const child = spawn(javaScript ? process.execPath : binary, javaScript ? [binary, ...piArgs] : piArgs, {
+		child = spawn(javaScript ? process.execPath : binary, javaScript ? [binary, ...piArgs] : piArgs, {
 			cwd: tempDir,
 			env: {
 				...process.env,
@@ -138,15 +169,11 @@ async function main() {
 			},
 			stdio: ["ignore", "pipe", "pipe"],
 		});
-		let stdout = "";
 		let stderr = "";
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk.toString();
-		});
 		child.stderr.on("data", (chunk) => {
 			stderr += chunk.toString();
 		});
-		const exitCode = await new Promise((resolveExit, reject) => {
+		const exitPromise = new Promise((resolveExit, reject) => {
 			const timer = setTimeout(() => {
 				child.kill();
 				reject(new Error(`Smoke test timed out after ${TIMEOUT_MS} ms`));
@@ -160,13 +187,45 @@ async function main() {
 				resolveExit(code);
 			});
 		});
-		if (exitCode !== 0 || !stdout.includes(SUCCESS_MARKER) || requestCount < 2) {
+
+		await waitForServer(baseUrl, child);
+
+		const events = await fetch(`${baseUrl}/events`);
+		let eventText = "";
+		const reader = events.body.getReader();
+		const decoder = new TextDecoder();
+		const pump = (async () => {
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) return;
+				eventText += decoder.decode(value, { stream: true });
+			}
+		})().catch(() => {});
+
+		const promptResponse = await fetch(`${baseUrl}/prompt`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "Run the codemode binary smoke test." }),
+		});
+		if (!promptResponse.ok) throw new Error(`POST /prompt failed with ${promptResponse.status}`);
+
+		const deadline = Date.now() + TIMEOUT_MS;
+		while (Date.now() < deadline) {
+			if (eventText.includes(SUCCESS_MARKER) || eventText.includes(FAILURE_MARKER)) break;
+			await delay(100);
+		}
+
+		child.kill();
+		await exitPromise;
+		await pump;
+
+		if (requestCount < 2 || !eventText.includes(SUCCESS_MARKER)) {
 			throw new Error(
-				`Codemode binary smoke test failed (exit ${exitCode}, requests ${requestCount})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+				`Codemode binary smoke test failed (requests ${requestCount})\nevents:\n${eventText}\nstderr:\n${stderr}`,
 			);
 		}
-		process.stdout.write(stdout);
 	} finally {
+		child?.kill();
 		await new Promise((resolveClose) => server.close(resolveClose));
 		await rm(tempDir, { recursive: true, force: true });
 	}
