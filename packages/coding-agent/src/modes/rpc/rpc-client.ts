@@ -79,7 +79,7 @@ export class RpcClient {
 		this.exitError = null;
 
 		const cliPath = this.options.cliPath ?? "dist/cli.js";
-		const args = ["--mode", "rpc"];
+		const args: string[] = [];
 
 		if (this.options.provider) {
 			args.push("--provider", this.options.provider);

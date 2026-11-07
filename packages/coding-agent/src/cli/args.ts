@@ -8,8 +8,6 @@ import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../co
 import type { ExtensionFlag } from "../core/extensions/types.ts";
 import { getToolListError } from "../core/settings-manager.ts";
 
-export type Mode = "text" | "json" | "rpc";
-
 export interface Args {
 	provider?: string;
 	model?: string;
@@ -21,7 +19,6 @@ export interface Args {
 	resume?: boolean;
 	help?: boolean;
 	version?: boolean;
-	mode?: Mode;
 	httpPort?: number;
 	name?: string;
 	noSession?: boolean;
@@ -42,9 +39,7 @@ export interface Args {
 	promptTemplates?: string[];
 	noPromptTemplates?: boolean;
 	noContextFiles?: boolean;
-	listModels?: string | true;
 	offline?: boolean;
-	verbose?: boolean;
 	projectTrustOverride?: boolean;
 	messages: string[];
 	fileArgs: string[];
@@ -88,21 +83,6 @@ export function parseArgs(args: string[]): Args {
 			result.help = true;
 		} else if (arg === "--version" || arg === "-v") {
 			result.version = true;
-		} else if (arg === "--mode") {
-			const mode = args[i + 1];
-			if (mode === undefined || mode.startsWith("-")) {
-				result.diagnostics.push({ type: "error", message: "--mode requires text, json, or rpc" });
-				continue;
-			}
-			i++;
-			if (mode !== "text" && mode !== "json" && mode !== "rpc") {
-				result.diagnostics.push({
-					type: "error",
-					message: `Invalid mode "${mode}". Valid values: text, json, rpc`,
-				});
-				continue;
-			}
-			result.mode = mode;
 		} else if (arg === "--continue" || arg === "-c") {
 			result.continue = true;
 		} else if (arg === "--resume" || arg === "-r") {
@@ -188,15 +168,6 @@ export function parseArgs(args: string[]): Args {
 			result.noPromptTemplates = true;
 		} else if (arg === "--no-context-files" || arg === "-nc") {
 			result.noContextFiles = true;
-		} else if (arg === "--list-models") {
-			// Check if next arg is a search pattern (not a flag or file arg)
-			if (i + 1 < args.length && !args[i + 1].startsWith("-") && !args[i + 1].startsWith("@")) {
-				result.listModels = args[++i];
-			} else {
-				result.listModels = true;
-			}
-		} else if (arg === "--verbose") {
-			result.verbose = true;
 		} else if (arg === "--approve" || arg === "-a") {
 			result.projectTrustOverride = true;
 		} else if (arg === "--no-approve" || arg === "-na") {
@@ -261,7 +232,6 @@ ${chalk.bold("Options:")}
   --api-key <key>                API key (defaults to env vars)
   --system-prompt <text>         System prompt (default: coding assistant prompt)
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
-  --mode <mode>                  Output mode: text (default), json, or rpc
   --http[=port]                  Serve the HTTP transport instead of stdio RPC (default port 3000)
   --continue, -c                 Continue the most recent session for the current directory
   --resume, -r                   Pick a session to resume
@@ -289,8 +259,6 @@ ${chalk.bold("Options:")}
   --prompt-template <path>       Load a prompt template file or directory (can be used multiple times)
   --no-prompt-templates, -np     Disable prompt template discovery and loading
   --no-context-files, -nc        Disable AGENTS.md and CLAUDE.md discovery and loading
-  --list-models [search]         List available models (with optional fuzzy search)
-  --verbose                      Force verbose startup (overrides quietStartup setting)
   --approve, -a                  Trust project-local files for this run
   --no-approve, -na              Ignore project-local files for this run
   --offline                      Disable startup network operations (same as PI_OFFLINE=1)
