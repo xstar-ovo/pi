@@ -15,11 +15,6 @@ import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-a
 export default function commandsExtension(pi: ExtensionAPI) {
 	pi.registerCommand("commands", {
 		description: "List available slash commands",
-		getArgumentCompletions: (prefix) => {
-			const sources = ["extension", "prompt", "skill"];
-			const filtered = sources.filter((s) => s.startsWith(prefix));
-			return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
-		},
 		handler: async (args, ctx) => {
 			const commands = pi.getCommands();
 			const sourceFilter = args.trim() as "extension" | "prompt" | "skill" | "";

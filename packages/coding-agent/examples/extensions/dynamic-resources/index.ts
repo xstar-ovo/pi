@@ -9,7 +9,6 @@ export default function (pi: ExtensionAPI) {
 		return {
 			skillPaths: [join(baseDir, "SKILL.md")],
 			promptPaths: [join(baseDir, "dynamic.md")],
-			themePaths: [join(baseDir, "dynamic.json")],
 		};
 	});
 }
