@@ -68,11 +68,9 @@ export {
 	type ExtensionFlag,
 	type ExtensionHandler,
 	ExtensionRunner,
-	type ExtensionShortcut,
 	type ExtensionUIContext,
 	type InlineExtension,
 	type LoadExtensionsResult,
-	type MessageRenderer,
 	type NormalizedBuildSystemPromptOptions,
 	type RegisteredCommand,
 	type SessionBeforeCompactEvent,
@@ -87,11 +85,9 @@ export {
 	type ToolCallEvent,
 	type ToolCallEventResult,
 	type ToolDefinition,
-	type ToolRenderResultOptions,
 	type ToolResultEvent,
 	type TurnEndEvent,
 	type TurnEndEventResult,
 	type TurnStartEvent,
-	type WorkingIndicatorOptions,
 } from "./extensions/index.ts";
 export { createSyntheticSourceInfo } from "./source-info.ts";

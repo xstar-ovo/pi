@@ -61,8 +61,6 @@ export type {
 	AgentStartEvent,
 	AgentToolResult,
 	AgentToolUpdateCallback,
-	AppKeybinding,
-	AutocompleteProviderFactory,
 	BashToolCallEvent,
 	BeforeAgentStartCustomEvent,
 	BeforeAgentStartEvent,
@@ -88,8 +86,6 @@ export type {
 	CustomMessageEntryDraft,
 	CustomToolCallEvent,
 	EditToolCallEvent,
-	EntryRenderer,
-	EntryRenderOptions,
 	ExecOptions,
 	ExecResult,
 	ExecuteToolOptions,
@@ -106,32 +102,21 @@ export type {
 	ExtensionFlag,
 	ExtensionHandler,
 	ExtensionRuntime,
-	ExtensionShortcut,
 	ExtensionToolContext,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionVirtualModel,
-	ExtensionWidgetOptions,
 	FindToolCallEvent,
 	GrepToolCallEvent,
 	InlineExtension,
 	InputEvent,
 	InputEventResult,
 	InputSource,
-	KeybindingHints,
-	KeybindingsManager,
 	LoadExtensionsResult,
 	LsToolCallEvent,
-	MarkdownMessageType,
-	MarkdownTransformContext,
-	MarkdownTransformer,
-	MarkdownTransformerOptions,
-	MarkdownTransformerRegistration,
 	McpServersChangeEvent,
 	MessageEndEvent,
 	MessageEndEventResult,
-	MessageRenderer,
-	MessageRenderOptions,
 	MessageStartEvent,
 	MessageUpdateEvent,
 	ModelSelectEvent,
@@ -170,7 +155,6 @@ export type {
 	SlashCommandInfo,
 	SlashCommandSource,
 	SourceInfo,
-	TerminalInputHandler,
 	ThinkingLevelSelectEvent,
 	ToolAnnotations,
 	ToolCallEvent,
@@ -185,9 +169,6 @@ export type {
 	ToolLoadout,
 	ToolLoadoutChanges,
 	ToolNamespace,
-	ToolRendererResolver,
-	ToolRenderers,
-	ToolRenderResultOptions,
 	ToolResultEvent,
 	ToolResultEventResult,
 	TurnEndEvent,
@@ -198,8 +179,6 @@ export type {
 	UIPromptStartEvent,
 	UserBashEvent,
 	UserBashEventResult,
-	WidgetPlacement,
-	WorkingIndicatorOptions,
 	WriteToolCallEvent,
 } from "./core/extensions/index.ts";
 export {
@@ -219,8 +198,6 @@ export {
 	wrapRegisteredTool,
 	wrapRegisteredTools,
 } from "./core/extensions/index.ts";
-// Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
-export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
 export type { RegisteredMcpServer } from "./core/mcp-servers.ts";
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
@@ -395,7 +372,6 @@ export {
 	type WriteToolOptions,
 	withFileMutationQueue,
 } from "./core/tools/index.ts";
-export { formatReadLineRange } from "./core/tools/render-utils.ts";
 export {
 	hasTrustRequiringProjectResources,
 	type ProjectTrustDecision,
@@ -421,11 +397,7 @@ export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
 export {
-	InteractiveMode,
-	type InteractiveModeOptions,
 	type JsonAgentSessionEvent,
-	type ModelInfo,
-	type PrintModeOptions,
 	RpcClient,
 	type RpcClientOptions,
 	type RpcCommand,
@@ -434,66 +406,8 @@ export {
 	type RpcExtensionUIResponse,
 	type RpcResponse,
 	type RpcSessionState,
-	runPrintMode,
 	runRpcMode,
-} from "./modes/index.ts";
-// UI components for extensions
-export {
-	ArminComponent,
-	AssistantMessageComponent,
-	BashExecutionComponent,
-	BorderedLoader,
-	BranchSummaryMessageComponent,
-	CompactionSummaryMessageComponent,
-	CustomEditor,
-	type CustomEditorOptions,
-	CustomMessageComponent,
-	DynamicBorder,
-	ExtensionEditorComponent,
-	ExtensionInputComponent,
-	ExtensionSelectorComponent,
-	FooterComponent,
-	keyHint,
-	keyText,
-	LoginDialogComponent,
-	ModelSelectorComponent,
-	OAuthSelectorComponent,
-	type RenderDiffOptions,
-	rawKeyHint,
-	renderDiff,
-	SessionSelectorComponent,
-	type SettingsCallbacks,
-	type SettingsConfig,
-	SettingsSelectorComponent,
-	ShowImagesSelectorComponent,
-	SkillInvocationMessageComponent,
-	ThemeSelectorComponent,
-	ThinkingSelectorComponent,
-	ToolExecutionComponent,
-	type ToolExecutionOptions,
-	TreeSelectorComponent,
-	truncateToVisualLines,
-	UserMessageComponent,
-	UserMessageSelectorComponent,
-	type VisualTruncateResult,
-} from "./modes/interactive/components/index.ts";
-// Theme utilities for custom tools and extensions
-export {
-	getLanguageFromPath,
-	getMarkdownTheme,
-	getSelectListTheme,
-	getSettingsListTheme,
-	highlightCode,
-	initTheme,
-	Theme,
-	type ThemeAppearance,
-	type ThemeBg,
-	type ThemeColor,
-	type ThemeStyle,
-	type ThemeToken,
-} from "./modes/interactive/theme/theme.ts";
-// Clipboard utilities
-export { copyToClipboard } from "./utils/clipboard.ts";
+} from "./modes/rpc/index.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";
 export { convertToPng } from "./utils/image-convert.ts";
 export { formatDimensionNote, type ResizedImage, resizeImage } from "./utils/image-resize.ts";

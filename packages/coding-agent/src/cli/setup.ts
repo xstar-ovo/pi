@@ -1,3 +1,4 @@
+// Process setup for the headless server entry point: no UI, no warnings on stdout.
 import { APP_NAME } from "../config.ts";
 import { configureHttpDispatcher } from "../core/http-dispatcher.ts";
 

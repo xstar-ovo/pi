@@ -4,7 +4,7 @@
  * Extensions are TypeScript modules that can:
  * - Subscribe to agent lifecycle events
  * - Register LLM-callable tools
- * - Register commands, keyboard shortcuts, and CLI flags
+ * - Register commands and CLI flags
  * - Interact with the user via UI primitives
  */
 
@@ -43,28 +43,12 @@ import type {
 	TranscriptContext,
 	Usage,
 } from "@earendil-works/pi-ai";
-import type {
-	AutocompleteItem,
-	AutocompleteProvider,
-	Component,
-	EditorComponent,
-	EditorTheme,
-	Keybinding,
-	KeyId,
-	OverlayHandle,
-	OverlayOptions,
-	ProgramStatus,
-	TUI,
-} from "@earendil-works/pi-tui";
 import type { Static, TSchema } from "typebox";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { BashResult } from "../bash-executor.ts";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../cache-warmer.ts";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.ts";
 import type { EventBus } from "../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../exec.ts";
-import type { ReadonlyFooterDataProvider } from "../footer-data-provider.ts";
-import type { KeybindingsManager } from "../keybindings.ts";
 import type { McpServerConfig, McpServerRegistry, RegisteredMcpServer } from "../mcp-servers.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRegistry } from "../model-registry.ts";
@@ -73,7 +57,6 @@ import type {
 	BranchSummaryEntry,
 	CompactionEntry,
 	ContextEditEntry,
-	CustomEntry,
 	ProjectedSessionEntry,
 	ReadonlySessionManager,
 	SessionEntry,
@@ -106,7 +89,6 @@ import type { ModelRoute, ModelRouteRequest, VirtualModelDefinition } from "../v
 export type { ExecOptions, ExecResult } from "../exec.ts";
 export type { BuildSystemPromptOptions, NormalizedBuildSystemPromptOptions } from "../system-prompt.ts";
 export type { AgentToolResult, AgentToolUpdateCallback, ToolExecutionMode };
-export type { AppKeybinding, KeybindingsManager } from "../keybindings.ts";
 
 // ============================================================================
 // UI Context
@@ -120,46 +102,9 @@ export interface ExtensionUIDialogOptions {
 	timeout?: number;
 }
 
-/** Placement for extension widgets. */
-export type WidgetPlacement = "aboveEditor" | "belowEditor";
-
-/** Options for extension widgets. */
-export interface ExtensionWidgetOptions {
-	/** Where the widget is rendered. Defaults to "aboveEditor". */
-	placement?: WidgetPlacement;
-}
-
-/** Raw terminal input listener for extensions. */
-export type TerminalInputHandler = (data: string) => { consume?: boolean; data?: string } | undefined;
-
-/** Working indicator configuration for the interactive streaming loader. */
-export interface WorkingIndicatorOptions {
-	/** Animation frames. Use an empty array to hide the indicator entirely. Custom frames are rendered verbatim. */
-	frames?: string[];
-	/** Frame interval in milliseconds for animated indicators. */
-	intervalMs?: number;
-}
-
-/** Wrap the current autocomplete provider with additional behavior. */
-export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
-export type EditorFactory = (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => EditorComponent;
-
 /**
- * Formats the host's configured keybindings for display.
- * Extensions should use these instead of importing `keyText`/`keyHint`: an import may resolve to another copy of
- * pi-coding-agent, which does not see the host's keybindings.
- */
-export interface KeybindingHints {
-	/** Configured keys for a keybinding id, for example `"ctrl+o"`. Empty when the id has no keys. */
-	keyText(keybinding: Keybinding): string;
-
-	/** Configured keys followed by a description, styled as a hint, for example `"ctrl+o to expand"`. */
-	keyHint(keybinding: Keybinding, description: string): string;
-}
-
-/**
- * UI context for extensions to request interactive UI.
- * Each mode (interactive, RPC, print) provides its own implementation.
+ * UI context for extensions to request user interaction.
+ * The backend forwards each call to the connected client and waits for its response.
  */
 export interface ExtensionUIContext {
 	/** Show a selector and return the user's choice. */
@@ -174,150 +119,20 @@ export interface ExtensionUIContext {
 	/** Show a notification to the user. */
 	notify(message: string, type?: "info" | "warning" | "error"): void;
 
-	/** Listen to raw terminal input (interactive mode only). Returns an unsubscribe function. */
-	onTerminalInput(handler: TerminalInputHandler): () => void;
-
-	/** Set status text in the footer/status bar. Pass undefined to clear. */
+	/** Set status text in the client's footer/status bar. Pass undefined to clear. */
 	setStatus(key: string, text: string | undefined): void;
-
-	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
-	setWorkingMessage(message?: string): void;
-
-	/** Show or hide the built-in interactive working loader row during streaming. */
-	setWorkingVisible(visible: boolean): void;
-
-	/**
-	 * Configure the interactive working indicator shown during streaming.
-	 *
-	 * - Omit the argument to restore the default animated spinner.
-	 * - Use `frames: ["●"]` for a static indicator.
-	 * - Use `frames: []` to hide the indicator entirely.
-	 * - Custom frames are rendered as provided, so extensions must add their own colors.
-	 */
-	setWorkingIndicator(options?: WorkingIndicatorOptions): void;
-
-	/** Set the label shown for hidden thinking blocks. Call with no argument to restore default. */
-	setHiddenThinkingLabel(label?: string): void;
-
-	/** Set a widget to display above or below the editor. Accepts string array or component factory. */
-	setWidget(key: string, content: string[] | undefined, options?: ExtensionWidgetOptions): void;
-	setWidget(
-		key: string,
-		content: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined,
-		options?: ExtensionWidgetOptions,
-	): void;
-
-	/** Set a custom footer component, or undefined to restore the built-in footer.
-	 *
-	 * The factory receives a FooterDataProvider for data not otherwise accessible:
-	 * git branch and extension statuses from setStatus(). Context usage is on
-	 * ctx.getContextUsage(), token stats on ctx.sessionManager.getEntries(), model info on ctx.model.
-	 */
-	setFooter(
-		factory:
-			| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
-			| undefined,
-	): void;
-
-	/** Set a custom header component (shown at startup, above chat), or undefined to restore the built-in header. */
-	setHeader(factory: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined): void;
 
 	/** Set the terminal window/tab title. */
 	setTitle(title: string): void;
 
-	/** Show a custom component with keyboard focus. */
-	custom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			keybindings: KeybindingsManager,
-			done: (result: T) => void,
-		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: {
-			overlay?: boolean;
-			/** Overlay positioning/sizing options. Can be static or a function for dynamic updates. */
-			overlayOptions?: OverlayOptions | (() => OverlayOptions);
-			/** Called with the overlay handle after the overlay is shown. Use to control visibility. */
-			onHandle?: (handle: OverlayHandle) => void;
-			/**
-			 * Report pi as blocked on user input (OSC 7501 program status) while this component waits for input.
-			 * Inline components report it while visible. Overlays report it until `done()` is called, also while
-			 * hidden with `setHidden()`.
-			 */
-			blocked?: { kind: NonNullable<ProgramStatus["kind"]>; message: string };
-		},
-	): Promise<T>;
-
-	/** Paste text into the editor, triggering paste handling (collapse for large content). */
-	pasteToEditor(text: string): void;
-
-	/** Set the text in the core input editor. */
+	/** Set the text in the client's input editor. */
 	setEditorText(text: string): void;
 
-	/** Get the current text from the core input editor. */
+	/** Get the current text from the client's input editor. */
 	getEditorText(): string;
 
 	/** Show a multi-line editor for text editing. */
 	editor(title: string, prefill?: string): Promise<string | undefined>;
-
-	/** Stack additional autocomplete behavior on top of the built-in provider. */
-	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
-
-	/**
-	 * Set a custom editor component via factory function.
-	 * Pass undefined to restore the default editor.
-	 *
-	 * The factory receives:
-	 * - `theme`: EditorTheme for styling borders and autocomplete
-	 * - `keybindings`: KeybindingsManager for app-level keybindings
-	 *
-	 * For full app keybinding support (escape, ctrl+d, model switching, etc.),
-	 * extend `CustomEditor` from `@earendil-works/pi-coding-agent` and call
-	 * `super.handleInput(data)` for keys you don't handle.
-	 *
-	 * @example
-	 * ```ts
-	 * import { CustomEditor } from "@earendil-works/pi-coding-agent";
-	 *
-	 * class VimEditor extends CustomEditor {
-	 *   private mode: "normal" | "insert" = "insert";
-	 *
-	 *   handleInput(data: string): void {
-	 *     if (this.mode === "normal") {
-	 *       // Handle vim normal mode keys...
-	 *       if (data === "i") { this.mode = "insert"; return; }
-	 *     }
-	 *     super.handleInput(data);  // App keybindings + text editing
-	 *   }
-	 * }
-	 *
-	 * ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-	 *   new VimEditor(tui, theme, keybindings)
-	 * );
-	 * ```
-	 */
-	setEditorComponent(factory: EditorFactory | undefined): void;
-
-	/** Get the currently configured custom editor factory, or undefined when using the default editor. */
-	getEditorComponent(): EditorFactory | undefined;
-
-	/** Get the current theme for styling. */
-	readonly theme: Theme;
-
-	/** Get all available themes with their names and file paths. */
-	getAllThemes(): { name: string; path: string | undefined }[];
-
-	/** Load a theme by name without switching to it. Returns undefined if not found. */
-	getTheme(name: string): Theme | undefined;
-
-	/** Set the current theme by name or Theme object. */
-	setTheme(theme: string | Theme): { success: boolean; error?: string };
-
-	/** Get current tool output expansion state. */
-	getToolsExpanded(): boolean;
-
-	/** Set tool output expansion state. */
-	setToolsExpanded(expanded: boolean): void;
 }
 
 // ============================================================================
@@ -341,14 +156,14 @@ export interface CompactOptions {
 /**
  * Context passed to extension event handlers.
  */
-export type ExtensionMode = "tui" | "rpc" | "json" | "print";
+export type ExtensionMode = "rpc" | "sdk";
 
 export interface ExtensionContext {
 	/** UI methods for user interaction */
 	ui: ExtensionUIContext;
-	/** Current run mode. Use "tui" to guard terminal-only UI such as custom components. */
+	/** Current run mode. */
 	mode: ExtensionMode;
-	/** Whether dialog-capable UI is available (true in TUI and RPC modes) */
+	/** Whether dialog-capable UI is available. */
 	hasUI: boolean;
 	/** Current working directory */
 	cwd: string;
@@ -476,49 +291,6 @@ export interface ReplacedSessionContext extends ExtensionCommandContext {
 // Tool Types
 // ============================================================================
 
-/** Rendering options for tool results */
-export interface ToolRenderResultOptions {
-	/** Whether the result view is expanded */
-	expanded: boolean;
-	/** Whether this is a partial/streaming result */
-	isPartial: boolean;
-}
-
-/** Context passed to tool renderers. */
-export interface ToolRenderContext<TState = any, TArgs = any> extends KeybindingHints {
-	/** Current tool call arguments. Shared across call/result renders for the same tool call. */
-	args: TArgs;
-	/** Unique id for this tool execution. Stable across call/result renders for the same tool call. */
-	toolCallId: string;
-	/** Invalidate just this tool execution component for redraw. */
-	invalidate: () => void;
-	/** Previously returned component for this render slot, if any. */
-	lastComponent: Component | undefined;
-	/** Shared renderer state for this tool row. Initialized by tool-execution.ts. */
-	state: TState;
-	/** Working directory for this tool execution. */
-	cwd: string;
-	/** Whether the tool execution has started. */
-	executionStarted: boolean;
-	/** Whether the tool call arguments are complete. */
-	argsComplete: boolean;
-	/** Whether the tool result is partial/streaming. */
-	isPartial: boolean;
-	/** Whether the result view is expanded. */
-	expanded: boolean;
-	/** Whether inline images are currently shown in the TUI. */
-	showImages: boolean;
-	/** Whether the current result is an error. */
-	isError: boolean;
-	/**
-	 * Milliseconds the tool's execution took, from the final result; `undefined` while it runs, when it did not run, or
-	 * for results stored before durations were recorded.
-	 */
-	durationMs: number | undefined;
-	/** Horizontal padding configured by the outputPad setting. Renderers with `renderShell: "self"` apply it themselves. */
-	outputPad: number;
-}
-
 /**
  * How the model reaches a tool. "Callable" means callable from other tools through
  * `ctx.executeTool()`, as the `codemode` tool does.
@@ -597,7 +369,7 @@ export interface ToolLoadoutChanges {
 /**
  * Tool definition for registerTool().
  */
-export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = unknown, TState = any> {
+export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = unknown> {
 	/** Tool name (used in LLM tool calls) */
 	name: string;
 	/** Human-readable label for UI */
@@ -612,9 +384,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	parameters: TParams;
 	/** Optional provider-side constrained sampling request for this tool. Set false to explicitly disable it, equivalent to leaving it undefined. */
 	constrainedSampling?: false | ConstrainedSamplingConfig;
-	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
-	renderShell?: "default" | "self";
-
+	/** Controls whether the client renders a standard shell around the tool call. */
 	/** Optional compatibility shim to prepare raw tool call arguments before schema validation. Must return an object conforming to TParams. */
 	prepareArguments?: (args: unknown) => Static<TParams>;
 
@@ -675,31 +445,9 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 		onUpdate: AgentToolUpdateCallback<TDetails> | undefined,
 		ctx: ExtensionToolContext,
 	): Promise<AgentToolResult<TDetails>>;
-
-	/** Custom rendering for tool call display */
-	renderCall?: (args: Static<TParams>, theme: Theme, context: ToolRenderContext<TState, Static<TParams>>) => Component;
-
-	/** Custom rendering for tool result display */
-	renderResult?: (
-		result: AgentToolResult<TDetails>,
-		options: ToolRenderResultOptions,
-		theme: Theme,
-		context: ToolRenderContext<TState, Static<TParams>>,
-	) => Component;
 }
 
-type AnyToolDefinition = ToolDefinition<any, any, any>;
-
-export type ToolRenderers = Pick<AnyToolDefinition, "renderShell" | "renderCall" | "renderResult">;
-
-/**
- * Chooses how calls to a tool are drawn, including tools that are not registered. `next()` returns
- * the renderers the remaining resolvers, then the registered tool, would use.
- */
-export type ToolRendererResolver = (
-	toolName: string,
-	next: () => ToolRenderers | undefined,
-) => ToolRenderers | undefined;
+type AnyToolDefinition = ToolDefinition<any, any>;
 
 /**
  * Preserve parameter inference for standalone tool definitions.
@@ -708,10 +456,10 @@ export type ToolRendererResolver = (
  * as `customTools`, where contextual typing would otherwise widen params to
  * `unknown`.
  */
-export function defineTool<TParams extends TSchema, TDetails = unknown, TState = any>(
-	tool: ToolDefinition<TParams, TDetails, TState>,
-): ToolDefinition<TParams, TDetails, TState> & AnyToolDefinition {
-	return tool as ToolDefinition<TParams, TDetails, TState> & AnyToolDefinition;
+export function defineTool<TParams extends TSchema, TDetails = unknown>(
+	tool: ToolDefinition<TParams, TDetails>,
+): ToolDefinition<TParams, TDetails> & AnyToolDefinition {
+	return tool as ToolDefinition<TParams, TDetails> & AnyToolDefinition;
 }
 
 // ============================================================================
@@ -1550,65 +1298,6 @@ export interface SessionBeforeTreeResult {
 }
 
 // ============================================================================
-// Message and Entry Rendering
-// ============================================================================
-
-export interface MessageRenderOptions extends KeybindingHints {
-	expanded: boolean;
-	/** Horizontal padding configured by the outputPad setting. */
-	outputPad: number;
-}
-
-/**
- * Markdown surface a transformer runs on.
- * - `user`, `assistant`, `assistant-thinking`: transcript messages (the default types of a transformer)
- * - `custom`: custom messages without a custom renderer, and expanded skill blocks (their content, without Pi's header)
- * - `summary`: expanded branch and compaction summaries (the summary, without Pi's header)
- * - `changelog`: Pi's changelog ("What's New" and `/changelog`), the "Extension Updates" notice, and the release note of
- *   the "Update Available" notice
- */
-export type MarkdownMessageType = "user" | "assistant" | "assistant-thinking" | "custom" | "summary" | "changelog";
-
-export interface MarkdownTransformContext {
-	messageType: MarkdownMessageType;
-	isStreaming: boolean;
-	availableWidth: number;
-	/** Persisted session-entry id. Undefined for live messages or live rendering; available when rendering from persisted session entries. */
-	messageId?: string;
-	/** Persisted session-entry ISO timestamp. Undefined for live messages or live rendering; available when rendering from persisted session entries. */
-	timestamp?: string;
-}
-
-export type MarkdownTransformer = (markdown: string, context: MarkdownTransformContext) => string;
-
-export interface MarkdownTransformerOptions {
-	/** Surfaces the transformer runs on. Default: `["user", "assistant", "assistant-thinking"]`. */
-	messageTypes?: readonly MarkdownMessageType[];
-}
-
-/** A registered Markdown transformer and the surfaces it runs on. */
-export interface MarkdownTransformerRegistration {
-	transformer: MarkdownTransformer;
-	messageTypes: ReadonlySet<MarkdownMessageType>;
-}
-
-export interface EntryRenderOptions extends KeybindingHints {
-	expanded: boolean;
-}
-
-export type MessageRenderer<T = unknown> = (
-	message: CustomMessage<T>,
-	options: MessageRenderOptions,
-	theme: Theme,
-) => Component | undefined;
-
-export type EntryRenderer<T = unknown> = (
-	entry: CustomEntry<T>,
-	options: EntryRenderOptions,
-	theme: Theme,
-) => Component | undefined;
-
-// ============================================================================
 // Command Registration
 // ============================================================================
 
@@ -1616,7 +1305,6 @@ export interface RegisteredCommand {
 	name: string;
 	sourceInfo: SourceInfo;
 	description?: string;
-	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
 
@@ -1714,25 +1402,14 @@ export interface ExtensionAPI {
 	// =========================================================================
 
 	/** Register a tool that the LLM can call. */
-	registerTool<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(
-		tool: ToolDefinition<TParams, TDetails, TState>,
-	): void;
+	registerTool<TParams extends TSchema = TSchema, TDetails = unknown>(tool: ToolDefinition<TParams, TDetails>): void;
 
 	// =========================================================================
-	// Command, Shortcut, Flag Registration
+	// Command, Flag Registration
 	// =========================================================================
 
 	/** Register a custom command. */
 	registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
-
-	/** Register a keyboard shortcut. */
-	registerShortcut(
-		shortcut: KeyId,
-		options: {
-			description?: string;
-			handler: (ctx: ExtensionContext) => Promise<void> | void;
-		},
-	): void;
 
 	/** Register a CLI flag. */
 	registerFlag(
@@ -1752,25 +1429,6 @@ export interface ExtensionAPI {
 
 	/** Get the value of a registered CLI flag. */
 	getFlag(name: string): boolean | string | undefined;
-
-	// =========================================================================
-	// Message Rendering
-	// =========================================================================
-
-	/** Register a custom renderer for CustomMessageEntry. */
-	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
-
-	/**
-	 * Register a transformer for Markdown before Pi renders it in interactive mode. By default it runs on user,
-	 * assistant and thinking Markdown; `options.messageTypes` selects the surfaces instead.
-	 */
-	registerMarkdownTransformer(transformer: MarkdownTransformer, options?: MarkdownTransformerOptions): void;
-
-	/** Register a custom renderer for CustomEntry. Custom entries do not participate in LLM context. */
-	registerEntryRenderer<T = unknown>(customType: string, renderer: EntryRenderer<T>): void;
-
-	/** Choose how tool calls are drawn. Resolvers run in extension load order. */
-	registerToolRenderer(resolver: ToolRendererResolver): void;
 
 	// =========================================================================
 	// Actions
@@ -2140,13 +1798,6 @@ export interface ExtensionFlag {
 	extensionPath: string;
 }
 
-export interface ExtensionShortcut {
-	shortcut: KeyId;
-	description?: string;
-	handler: (ctx: ExtensionContext) => Promise<void> | void;
-	extensionPath: string;
-}
-
 type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 export type SendMessageHandler = <T = unknown>(
@@ -2323,13 +1974,8 @@ export interface Extension {
 	sourceInfo: SourceInfo;
 	handlers: Map<string, HandlerFn[]>;
 	tools: Map<string, RegisteredTool>;
-	messageRenderers: Map<string, MessageRenderer>;
-	toolRenderers?: ToolRendererResolver[];
-	markdownTransformer?: MarkdownTransformerRegistration;
-	entryRenderers?: Map<string, EntryRenderer>;
 	commands: Map<string, RegisteredCommand>;
 	flags: Map<string, ExtensionFlag>;
-	shortcuts: Map<KeyId, ExtensionShortcut>;
 }
 
 /** Result of loading extensions. */

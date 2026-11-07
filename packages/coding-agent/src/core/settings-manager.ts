@@ -1,6 +1,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
-import type { ScrollViewScrollbar, TerminalCapabilities, WheelScrollLines } from "@earendil-works/pi-tui";
+
+type TerminalCapabilities = { trueColor: boolean; hyperlinks: boolean; images: "kitty" | "iterm2" | null };
+type ScrollViewScrollbar = "auto" | "always" | "hidden";
+type WheelScrollLines = "auto" | number;
+
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";

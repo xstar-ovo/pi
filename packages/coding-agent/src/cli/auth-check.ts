@@ -1,9 +1,19 @@
-import type { CredentialStore } from "@earendil-works/pi-ai";
+import type { AuthResult, CredentialStore } from "@earendil-works/pi-ai";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
 import { InMemoryCodingAgentModelsStore } from "../core/models-store.ts";
 import type { Args } from "./args.ts";
-import { AuthCommandError, getAuthCredential, validateAuthCommandArgs } from "./auth-command.ts";
+
+export class AuthCheckError extends Error {}
+
+/** API key or bearer token of a resolved auth, for clients that forward credentials. */
+function getAuthCredential(auth: AuthResult | undefined): string | undefined {
+	if (auth?.auth.apiKey) return auth.auth.apiKey;
+	const authorization = Object.entries(auth?.auth.headers ?? {}).find(
+		([name]) => name.toLowerCase() === "authorization",
+	)?.[1];
+	return typeof authorization === "string" ? /^Bearer\s+(.+)$/iu.exec(authorization)?.[1] : undefined;
+}
 
 export type AuthCheckStatus = "ready" | "not_ready" | "invalid";
 export type AuthCheckReason =
@@ -24,16 +34,22 @@ export async function checkProviderAuth(
 	modelRuntime: ModelRuntime,
 	options: { refresh: boolean } = { refresh: false },
 ): Promise<AuthCheckResult> {
-	const { provider: cliProvider, model: cliModel } = validateAuthCommandArgs(args, "check");
+	const { provider: cliProvider, model: cliModel } = {
+		provider: args.provider?.trim() || undefined,
+		model: args.model?.trim() || undefined,
+	};
+	if (!cliProvider && !cliModel) {
+		throw new AuthCheckError("Auth checks require --provider <provider> or --model <model>");
+	}
 	let provider = cliProvider;
 	if (cliModel) {
 		const resolved = resolveCliModel({ cliProvider, cliModel, modelRuntime });
 		if (resolved.error || !resolved.model) {
-			throw new AuthCommandError(resolved.error ?? `Unable to resolve model "${cliModel}"`);
+			throw new AuthCheckError(resolved.error ?? `Unable to resolve model "${cliModel}"`);
 		}
 		provider = resolved.model.provider;
 	}
-	if (!provider) throw new AuthCommandError("Unable to resolve an auth provider");
+	if (!provider) throw new AuthCheckError("Unable to resolve an auth provider");
 	if (modelRuntime.getError()) {
 		return { status: "invalid", provider, reason: "invalid_state" };
 	}
