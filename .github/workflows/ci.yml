@@ -73,7 +73,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # fd and ripgrep are used by coding-agent tools tests and tui autocomplete tests.
+      # fd and ripgrep are used by coding-agent tools tests.
       - name: Install system dependencies
         if: matrix.name != 'durable'
         run: |

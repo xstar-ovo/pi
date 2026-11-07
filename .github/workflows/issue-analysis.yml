@@ -364,6 +364,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const net = require('net');
             const path = require('path');
             const { spawn } = require('child_process');
 
@@ -378,11 +379,18 @@ jobs:
               prompt += process.env.EXTRA_INSTRUCTIONS;
             }
 
-            const outputPath = path.join(outDir, 'output.md');
-            const output = fs.createWriteStream(outputPath);
+            // The backend only serves the HTTP transport (or stdio RPC); drive it over HTTP.
+            const port = await new Promise((resolve, reject) => {
+              const probe = net.createServer();
+              probe.once('error', reject);
+              probe.listen(0, '127.0.0.1', () => {
+                const { port: boundPort } = probe.address();
+                probe.close(() => resolve(boundPort));
+              });
+            });
+            const baseUrl = `http://127.0.0.1:${port}`;
             const args = [
               'packages/coding-agent/src/cli.ts',
-              '-p',
               '--approve',
               '--session-dir',
               sessionDir,
@@ -390,29 +398,68 @@ jobs:
               process.env.ISSUE_ANALYSIS_MODEL,
               '--thinking',
               process.env.ISSUE_ANALYSIS_THINKING,
-              prompt,
+              `--http=${port}`,
             ];
 
-            const exitCode = await new Promise((resolve, reject) => {
-              const child = spawn('node', args, {
-                cwd: workdir,
-                env: process.env,
-                stdio: ['ignore', 'pipe', 'pipe'],
-              });
-              child.stdout.on('data', (chunk) => {
-                process.stdout.write(chunk);
-                output.write(chunk);
-              });
-              child.stderr.on('data', (chunk) => {
-                process.stderr.write(chunk);
-              });
-              child.on('error', reject);
-              child.on('close', resolve);
+            const outputPath = path.join(outDir, 'output.md');
+            const output = fs.createWriteStream(outputPath);
+            const child = spawn('node', args, {
+              cwd: workdir,
+              env: process.env,
+              stdio: ['ignore', 'pipe', 'pipe'],
             });
-            await new Promise((resolve) => output.end(resolve));
+            child.stdout.on('data', (chunk) => {
+              process.stdout.write(chunk);
+              output.write(chunk);
+            });
+            child.stderr.on('data', (chunk) => {
+              process.stderr.write(chunk);
+            });
+            child.on('error', (error) => {
+              console.error(error);
+            });
+            const exited = new Promise((resolve) => child.on('close', resolve));
 
-            if (exitCode !== 0) {
-              throw new Error(`pi /is failed with exit code ${exitCode}`);
+            async function readState() {
+              const response = await fetch(`${baseUrl}/state`);
+              if (!response.ok) throw new Error(`GET /state failed with ${response.status}`);
+              return await response.json();
+            }
+
+            const deadline = Date.now() + 30 * 60 * 1000;
+            async function waitForState(predicate, description) {
+              for (;;) {
+                if (child.exitCode !== null) throw new Error(`pi exited while waiting for ${description}`);
+                try {
+                  const state = await readState();
+                  if (predicate(state)) return state;
+                } catch (error) {
+                  if (child.exitCode !== null) {
+                    throw new Error(`pi exited before serving HTTP: ${error instanceof Error ? error.message : error}`);
+                  }
+                }
+                if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            }
+
+            try {
+              const initialState = await waitForState(() => true, 'the HTTP transport');
+              const promptResponse = await fetch(`${baseUrl}/prompt`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ message: prompt }),
+              });
+              if (!promptResponse.ok) throw new Error(`POST /prompt failed with ${promptResponse.status}`);
+
+              await waitForState(
+                (state) => !state.isStreaming && state.messageCount > initialState.messageCount,
+                'the analysis to finish',
+              );
+            } finally {
+              child.kill();
+              await exited;
+              await new Promise((resolve) => output.end(resolve));
             }
 
       - name: Persist refreshed auth.json
@@ -495,7 +542,6 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const { spawn } = require('child_process');
 
             function findFirstJsonl(dir) {
               if (!fs.existsSync(dir)) return undefined;
@@ -519,22 +565,7 @@ jobs:
             }
 
             const sessionJsonl = path.join(outDir, 'session.jsonl');
-            const sessionHtml = path.join(outDir, 'session.html');
             fs.copyFileSync(sessionFile, sessionJsonl);
-
-            const workdir = path.join(process.env.GITHUB_WORKSPACE, process.env.WORKDIR);
-            const exitCode = await new Promise((resolve, reject) => {
-              const child = spawn(
-                'node',
-                ['packages/coding-agent/src/cli.ts', '--no-extensions', '--export', sessionJsonl, sessionHtml],
-                { cwd: workdir, env: process.env, stdio: 'inherit' },
-              );
-              child.on('error', reject);
-              child.on('close', resolve);
-            });
-            if (exitCode !== 0) {
-              throw new Error(`session export failed with exit code ${exitCode}`);
-            }
 
       - name: Upload session gist
         id: gist
@@ -554,9 +585,7 @@ jobs:
 
             const outDir = path.join(process.env.RUNNER_TEMP, 'pi-out');
             const files = {};
-            for (const filename of ['session.html', 'session.jsonl']) {
-              files[filename] = { content: fs.readFileSync(path.join(outDir, filename), 'utf8') };
-            }
+            files['session.jsonl'] = { content: fs.readFileSync(path.join(outDir, 'session.jsonl'), 'utf8') };
 
             const response = await github.rest.gists.create({
               public: false,
