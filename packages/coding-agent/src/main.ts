@@ -8,9 +8,9 @@
 
 import { modelsAreEqual } from "@earendil-works/pi-ai";
 import chalk from "chalk";
-import { type Args, normalizeSessionName, parseArgs } from "./cli/args.ts";
+import { type Args, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
-import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir } from "./config.ts";
+import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -320,6 +320,15 @@ export async function main(args: string[], options?: MainOptions) {
 		}
 	}
 
+	if (parsed.version) {
+		console.log(VERSION);
+		return;
+	}
+	if (parsed.help) {
+		printHelp();
+		return;
+	}
+
 	validateSessionFlags(parsed);
 
 	runMigrations(cwd);
@@ -489,12 +498,6 @@ export async function main(args: string[], options?: MainOptions) {
 	const startupDiagnostics = deduplicateDiagnostics([...startupSettingsDiagnostics, ...runtime.diagnostics]);
 	const hasRuntimeErrors = runtime.diagnostics.some((diagnostic) => diagnostic.type === "error");
 
-	if (parsed.help) {
-		reportDiagnostics(startupDiagnostics);
-		console.log(`${APP_NAME} backend (JSONL RPC on stdio). Run with --help for client-facing usage.`);
-		process.exit(0);
-	}
-
 	reportDiagnostics(startupDiagnostics);
 	if (hasRuntimeErrors) {
 		if (runtime.diagnostics.some((diagnostic) => diagnostic.message.includes("Failed to load extension"))) {
@@ -519,20 +522,7 @@ export async function main(args: string[], options?: MainOptions) {
 			.finally(() => clearTimeout(timeout));
 	}
 
-	const httpPort = readHttpPort(parsed.unknownFlags);
-	await (httpPort === undefined ? runRpcMode(runtime) : runHttpMode(runtime, { port: httpPort }));
-}
-
-/** `--http[=port]` switches the backend from stdio RPC to the HTTP transport (default port 3000). */
-function readHttpPort(unknownFlags: Map<string, boolean | string>): number | undefined {
-	const flag = unknownFlags.get("http");
-	if (flag === undefined) return undefined;
-	const port = typeof flag === "string" ? Number.parseInt(flag, 10) : 3000;
-	if (!Number.isInteger(port) || port < 1 || port > 65535) {
-		console.error(chalk.red(`Invalid --http port: ${flag}`));
-		process.exit(1);
-	}
-	return port;
+	await (parsed.httpPort === undefined ? runRpcMode(runtime) : runHttpMode(runtime, { port: parsed.httpPort }));
 }
 
 function isTruthyEnvFlag(value: string | undefined): boolean {

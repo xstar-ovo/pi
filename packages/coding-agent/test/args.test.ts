@@ -153,6 +153,29 @@ describe("parseArgs", () => {
 		});
 	});
 
+	describe("--http flag", () => {
+		test("defaults to port 3000", () => {
+			const result = parseArgs(["--http"]);
+			expect(result.httpPort).toBe(3000);
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test.each([
+			[["--http=4000"], 4000],
+			[["--http", "8080"], 8080],
+		] as const)("parses %j", (args, port) => {
+			const result = parseArgs([...args]);
+			expect(result.httpPort).toBe(port);
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test.each(["--http=0", "--http=70000", "--http=abc"])("rejects invalid --http value %s", (arg) => {
+			const result = parseArgs([arg]);
+			expect(result.httpPort).toBeUndefined();
+			expect(result.diagnostics).toHaveLength(1);
+		});
+	});
+
 	// Issue #9045
 	describe("--mode flag", () => {
 		test.each(["text", "json", "rpc"] as const)("parses --mode %s", (mode) => {

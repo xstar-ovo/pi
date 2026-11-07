@@ -22,6 +22,7 @@ export interface Args {
 	help?: boolean;
 	version?: boolean;
 	mode?: Mode;
+	httpPort?: number;
 	name?: string;
 	noSession?: boolean;
 	session?: string;
@@ -244,6 +245,16 @@ export function parseArgs(args: string[]): Args {
 			result.projectTrustOverride = false;
 		} else if (arg === "--offline") {
 			result.offline = true;
+		} else if (arg === "--http" || arg.startsWith("--http=")) {
+			const inlineValue = arg.startsWith("--http=") ? arg.slice("--http=".length) : undefined;
+			const next = args[i + 1];
+			const value = inlineValue ?? (next !== undefined && /^\d+$/.test(next) ? args[++i] : undefined);
+			const port = value === undefined ? 3000 : Number.parseInt(value, 10);
+			if (!Number.isInteger(port) || port < 1 || port > 65535) {
+				result.diagnostics.push({ type: "error", message: `Invalid --http port: ${value}` });
+			} else {
+				result.httpPort = port;
+			}
 		} else if (arg.startsWith("@")) {
 			result.fileArgs.push(arg.slice(1)); // Remove @ prefix
 		} else if (arg.startsWith("--")) {
@@ -304,6 +315,7 @@ ${chalk.bold("Options:")}
   --system-prompt <text>         System prompt (default: coding assistant prompt)
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --mode <mode>                  Output mode: text (default), json, or rpc
+  --http[=port]                  Serve the HTTP transport instead of stdio RPC (default port 3000)
   --print, -p                    Non-interactive mode: process prompt and exit
   --continue, -c                 Continue the most recent session for the current directory
   --resume, -r                   Pick a session to resume
