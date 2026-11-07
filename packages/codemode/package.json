@@ -38,8 +38,7 @@
 		}
 	},
 	"files": [
-		"dist",
-		"README.md"
+		"dist"
 	],
 	"scripts": {
 		"clean": "node ../../scripts/package-files.mjs clean dist",

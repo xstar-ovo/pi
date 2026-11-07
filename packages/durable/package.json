@@ -118,9 +118,7 @@
 	},
 	"sideEffects": false,
 	"files": [
-		"dist",
-		"README.md",
-		"CHANGELOG.md"
+		"dist"
 	],
 	"scripts": {
 		"clean": "node ../../scripts/package-files.mjs clean dist",

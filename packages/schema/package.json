@@ -20,8 +20,6 @@
 	"sideEffects": false,
 	"files": [
 		"dist",
-		"README.md",
-		"CHANGELOG.md",
 		"THIRD_PARTY_NOTICES"
 	],
 	"scripts": {

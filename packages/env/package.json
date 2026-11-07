@@ -16,10 +16,7 @@
 	"sideEffects": false,
 	"files": [
 		"dist",
-		"bin",
-		"docs",
-		"README.md",
-		"CHANGELOG.md"
+		"bin"
 	],
 	"scripts": {
 		"clean": "node ../../scripts/package-files.mjs clean dist",
