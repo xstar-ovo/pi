@@ -9,7 +9,8 @@
  *   - Parallel: { tasks: [{ agent: "name", task: "..." }, ...] }
  *   - Chain: { chain: [{ agent: "name", task: "... {previous} ..." }, ...] }
  *
- * Uses JSON mode to capture structured output from subagents.
+ * Uses RPC mode: the task is sent as a prompt command on stdin and the child
+ * streams session events as JSON lines on stdout.
  */
 
 import { spawn } from "node:child_process";
@@ -259,7 +260,7 @@ async function runSingleAgent(
 		);
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const args: string[] = ["--mode", "rpc", "--no-session"];
 	const inheritsDispatchConfig = !agent.model;
 	const model = agent.model ?? dispatchDefaults.model;
 	if (model) args.push("--model", model);
@@ -304,7 +305,6 @@ async function runSingleAgent(
 			return currentResult;
 		}
 
-		args.push(`Task: ${task}`);
 		emitUpdate();
 		let wasAborted = false;
 		const outcome = await new Promise<ProcessOutcome>((resolve) => {
@@ -315,12 +315,22 @@ async function runSingleAgent(
 			let killTimer: ReturnType<typeof setTimeout> | undefined;
 			let buffer = "";
 
+			// The RPC child stays alive until its stdin closes, so the run ends by closing stdin once
+			// the agent settles; the process exit then reports the outcome through the close handler.
+			const closeInput = () => {
+				if (proc.stdin?.writable) proc.stdin.end();
+			};
+
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
 				let event: JsonAgentSessionEvent;
 				try {
 					event = JSON.parse(line) as JsonAgentSessionEvent;
 				} catch {
+					return;
+				}
+				if (event.type === "agent_settled") {
+					closeInput();
 					return;
 				}
 				if (event.type !== "message_end") return;
@@ -371,7 +381,7 @@ async function runSingleAgent(
 				proc = spawn(invocation.command, invocation.args, {
 					cwd: effectiveCwd,
 					shell: false,
-					stdio: ["ignore", "pipe", "pipe"],
+					stdio: ["pipe", "pipe", "pipe"],
 				});
 			} catch (error) {
 				finish({
@@ -401,6 +411,12 @@ async function runSingleAgent(
 			proc.on("error", (error) => {
 				finish({ code: null, signal: null, spawnError: error });
 			});
+			proc.stdin?.on("error", () => {
+				// A child that exits early breaks the pipe; the close path reports the outcome.
+			});
+			if (proc.stdin?.writable) {
+				proc.stdin.write(`${JSON.stringify({ type: "prompt", id: "prompt-1", message: `Task: ${task}` })}\n`);
+			}
 
 			if (signal) {
 				if (signal.aborted) abortProcess();
