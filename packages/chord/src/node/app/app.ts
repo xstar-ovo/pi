@@ -11,14 +11,7 @@ import { type Context, withAbortSignal } from "../../context/index.ts";
 import { type Address, type HostKind, hostKind, type KindShape } from "../../contracts/index.ts";
 import type { Principal } from "../../data/index.ts";
 import { canonicalJson } from "../../data/principal.ts";
-import {
-	createHost,
-	type Facet,
-	type Host,
-	type HostError,
-	type PluginFacet,
-	type PrincipalAttributes,
-} from "../../host/index.ts";
+import { createHost, type Host, type HostError, type PluginFacet, type PrincipalAttributes } from "../../host/index.ts";
 import type { JsonValue } from "../../json.ts";
 import { openNodeSqliteDatabase } from "../../sqlite/node.ts";
 import { openStore, type Store, sqliteBackend } from "../../store/index.ts";
@@ -35,9 +28,7 @@ import {
 	type PluginsError,
 	type PluginsState,
 	type RolloutResult,
-	type RolloutStep,
 } from "../plugins/index.ts";
-import { tuiSurface, WEB_PREFIX, type WebSurfaceOptions, webSurface } from "../surfaces/index.ts";
 import { createWorkers, type ProcessLock, processLock, type Workers, type WorkersError } from "../workers/index.ts";
 import { ARCHIVE_FORMAT, type ArchiveManifest, packData, unpackData } from "./archive.ts";
 import { addressParam, HostData } from "./data.ts";
@@ -120,13 +111,6 @@ export type AppOptions<P extends Principal> = {
 	/** How installs run npm (slice 12's `InstallOptions`): `npm` on the `PATH` by default. */
 	readonly install?: InstallOptions;
 	/**
-	 * The web surface (slice 11): the app's web entry (the base bundle's), its page template, the paths serving the
-	 * page (`["/"]`), whether the page is public; the `web` facet kind. None: no web surface.
-	 */
-	readonly web?: AppWeb;
-	/** The terminal surface (slice 11): the app's terminal entry; the `tui` facet kind. None: no terminal clients. */
-	readonly tui?: { readonly entry: string };
-	/**
 	 * The app's telemetry store (§29; decision "The server is the one place telemetry is stored"): the server's host,
 	 * its HTTP requests and the kit's ingest record to it (`createSqliteTelemetry`'s store). With one, every worker
 	 * records in memory and sends its spans and metrics to the server's `WorkerTelemetry`, and pages that record
@@ -177,9 +161,6 @@ export type AppTimeouts = {
 	readonly reloadDrainTimeout?: number;
 };
 
-/** The kit's web surface options (`webSurface`'s, its kind `web` and plugins the kit's). */
-export type AppWeb = Pick<WebSurfaceOptions, "entry" | "page" | "paths" | "public">;
-
 /** The plugins of a running app, for its "apply changes" control and its installs. */
 export type AppPlugins = {
 	/** The marks (`dirty`, `install`, `set`, `base`): what the app's button shows. */
@@ -197,10 +178,6 @@ export interface App<P extends Principal> {
 	/** The workers components, by host kind name. */
 	readonly workers: ReadonlyMap<string, Workers<HostKind>>;
 	readonly plugins: AppPlugins;
-	/** The web surface's base bundle hash, when the app has one. */
-	readonly web: { readonly base: string } | undefined;
-	/** The terminal surface's base bundle hash, when the app has one. */
-	readonly tui: { readonly base: string } | undefined;
 	/** The data directory. */
 	readonly dataDir: string;
 	/** The owner link of this start (single use, 10 minutes): `http://127.0.0.1:<port>/_chord/owner#<token>`. */
@@ -288,7 +265,6 @@ export async function startServer<P extends Principal>(options: AppOptions<P>, c
 			),
 			install: options.install,
 			base: baseDirs,
-			publicPath: `${WEB_PREFIX}assets/`,
 			onError: (error) => onError({ kind: "plugins", error }),
 		},
 		context,
@@ -325,8 +301,7 @@ export async function startServer<P extends Principal>(options: AppOptions<P>, c
 		});
 		core.push({ name: "chord.telemetry", facet });
 	}
-	const surfaces: Surface<P>[] = [];
-	const app = new RunningApp(host, http, workers, plugins, surfaces, { store, lock }, layout, options);
+	const app = new RunningApp(host, http, workers, plugins, { store, lock }, layout, options);
 	try {
 		// Each worker kind's base bundled now: one that does not build fails the start, everything closed.
 		for (const kind of options.workers ?? []) {
@@ -335,12 +310,8 @@ export async function startServer<P extends Principal>(options: AppOptions<P>, c
 				await workersOf(host, kind, options, layout.dataDir, plugins, workerHosts, context),
 			);
 		}
-		for (const surface of await surfacesOf(host, options, plugins, context)) {
-			surfaces.push(surface);
-			core.push({ name: `chord.${surface.name}`, facet: surface.facet });
-		}
 		const files = base.filter((path) => !baseDirs.includes(path));
-		const bundled = [...surfaces, ...workers.values()].flatMap(({ inputs }) => inputs);
+		const bundled = [...workers.values()].flatMap(({ inputs }) => inputs);
 		plugins.watchBase([...files, ...bundled]);
 		await plugins.load(host, { kind: "server", core, modules: modulesOf(api, options.kinds.server) }, context);
 		await ownerTokenFile(layout.ownerToken, host, context);
@@ -350,32 +321,6 @@ export async function startServer<P extends Principal>(options: AppOptions<P>, c
 		throw error;
 	}
 	return app;
-}
-
-/** A client surface of the app: its name (`web`, `tui`), its facet, its rollout step, its base bundle's hash. */
-type Surface<P extends Principal> = {
-	readonly name: "web" | "tui";
-	readonly facet: Facet<P>;
-	step(name: string): RolloutStep;
-	readonly base: string;
-	/** The files its base bundle was built from. */
-	readonly inputs: readonly string[];
-};
-
-/** The app's client surfaces, built (their base bundles) in order: the web's, the terminal's. */
-async function surfacesOf<P extends Principal>(
-	host: Host<P>,
-	options: AppOptions<P>,
-	plugins: Plugins,
-	context: Context,
-): Promise<Surface<P>[]> {
-	const surfaces: Surface<P>[] = [];
-	if (options.web !== undefined)
-		surfaces.push({ name: "web", ...(await webSurface(host, { ...options.web, plugins }, context)) });
-	if (options.tui !== undefined) {
-		surfaces.push({ name: "tui", ...(await tuiSurface(host, { entry: options.tui.entry, plugins }, context)) });
-	}
-	return surfaces;
 }
 
 /** How long a second server waits for the data directory's lock before it is refused. */
@@ -494,8 +439,6 @@ class RunningApp<P extends Principal> implements App<P> {
 	readonly dataDir: string;
 	readonly ownerTokenFile: string;
 	readonly #component: Plugins;
-	/** The client surfaces, filled before the server's load. */
-	readonly #surfaces: readonly Surface<P>[];
 	readonly #store: Store;
 	readonly #lock: ProcessLock;
 	readonly #options: AppOptions<P>;
@@ -509,7 +452,6 @@ class RunningApp<P extends Principal> implements App<P> {
 		http: HttpComponent<P>,
 		workers: ReadonlyMap<string, Workers<HostKind>>,
 		plugins: Plugins,
-		surfaces: readonly Surface<P>[],
 		server: { readonly store: Store; readonly lock: ProcessLock },
 		layout: { readonly dataDir: string; readonly plugins: string; readonly ownerToken: string },
 		options: AppOptions<P>,
@@ -518,7 +460,6 @@ class RunningApp<P extends Principal> implements App<P> {
 		this.http = http;
 		this.workers = workers;
 		this.#component = plugins;
-		this.#surfaces = surfaces;
 		this.#store = server.store;
 		this.#lock = server.lock;
 		this.#options = options;
@@ -540,14 +481,6 @@ class RunningApp<P extends Principal> implements App<P> {
 		return this.#link;
 	}
 
-	get web(): { readonly base: string } | undefined {
-		return this.#surfaces.find(({ name }) => name === "web");
-	}
-
-	get tui(): { readonly base: string } | undefined {
-		return this.#surfaces.find(({ name }) => name === "tui");
-	}
-
 	applyChanges(context: Context): Promise<RolloutResult> {
 		// One build and rollout at a time: a later build rolled out before an earlier one would leave the older code
 		// deployed (each host applies the last set it is handed).
@@ -559,15 +492,11 @@ class RunningApp<P extends Principal> implements App<P> {
 		return applied;
 	}
 
-	/** One build of the dirty plugins and its rollout: the server, every worker kind, then the clients. */
+	/** One build of the dirty plugins and its rollout: the server, then every worker kind. */
 	async #applyChanges(context: Context): Promise<RolloutResult> {
 		const plugins = this.#component;
 		const built = await plugins.build(plugins.state.value.dirty, context);
-		const steps = [
-			plugins.step("server", this.host),
-			...[...this.workers].map(([name, each]) => each.step(name)),
-			...this.#surfaces.map((surface) => surface.step(surface.name)),
-		];
+		const steps = [plugins.step("server", this.host), ...[...this.workers].map(([name, each]) => each.step(name))];
 		return plugins.rollout(steps, built, context);
 	}
 
