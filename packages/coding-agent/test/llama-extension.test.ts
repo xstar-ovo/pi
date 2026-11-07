@@ -39,17 +39,10 @@ afterEach(async () => {
 });
 
 describe("llama.cpp extension", () => {
-	it("registers a native provider and /llama command", async () => {
+	it("registers a native provider", async () => {
 		const runtime = createExtensionRuntime();
-		const extension = await loadExtensionFromFactory(
-			llamaExtension,
-			process.cwd(),
-			createEventBus(),
-			runtime,
-			"builtin:llama.cpp",
-		);
+		await loadExtensionFromFactory(llamaExtension, process.cwd(), createEventBus(), runtime, "builtin:llama.cpp");
 
-		expect(extension.commands.get("llama")?.description).toBe("Manage llama.cpp router models");
 		expect(runtime.pendingNativeProviderRegistrations.map((entry) => entry.provider.id)).toEqual([LLAMA_PROVIDER_ID]);
 	});
 

@@ -16,7 +16,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Args } from "../src/cli/args.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createSessionManager } from "../src/main.ts";
 
 const cliPath = resolve(__dirname, "../src/cli.ts");
@@ -126,34 +125,18 @@ describe("--session-id", () => {
 		const projectDir = join(tempRoot, "project");
 		const sessionDir = join(tempRoot, "sessions");
 		mkdirSync(projectDir, { recursive: true });
-		const settingsManager = SettingsManager.inMemory();
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-		const readOnly = await createSessionManager(
-			args({ sessionId: "read-only", help: true }),
-			projectDir,
-			sessionDir,
-			settingsManager,
-		);
+		const readOnly = await createSessionManager(args({ sessionId: "read-only", help: true }), projectDir, sessionDir);
 		expect(readOnly.getSessionId()).toBe("read-only");
 		expect(readOnly.getSessionFile()).toBeUndefined();
 
-		const created = await createSessionManager(
-			args({ sessionId: "persisted-id" }),
-			projectDir,
-			sessionDir,
-			settingsManager,
-		);
+		const created = await createSessionManager(args({ sessionId: "persisted-id" }), projectDir, sessionDir);
 		persistSession(created, "persist me");
 		expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("creating a new session"));
 
 		consoleError.mockClear();
-		const reopened = await createSessionManager(
-			args({ sessionId: "persisted-id" }),
-			projectDir,
-			sessionDir,
-			settingsManager,
-		);
+		const reopened = await createSessionManager(args({ sessionId: "persisted-id" }), projectDir, sessionDir);
 		expect(reopened.getSessionFile()).toBe(created.getSessionFile());
 		expect(consoleError).not.toHaveBeenCalled();
 	});
@@ -169,12 +152,7 @@ describe("--session-id", () => {
 		const list = vi.spyOn(SessionManager, "list").mockRejectedValue(new Error("unexpected full listing"));
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		const created = await createSessionManager(
-			args({ sessionId: "fresh-id" }),
-			projectDir,
-			sessionDir,
-			SettingsManager.inMemory(),
-		);
+		const created = await createSessionManager(args({ sessionId: "fresh-id" }), projectDir, sessionDir);
 
 		expect(created.getSessionId()).toBe("fresh-id");
 		expect(list).not.toHaveBeenCalled();
@@ -190,12 +168,7 @@ describe("--session-id", () => {
 		const renamedPath = join(sessionDir, "imported-session.jsonl");
 		renameSync(original.getSessionFile()!, renamedPath);
 
-		const reopened = await createSessionManager(
-			args({ sessionId: "renamed-id" }),
-			projectDir,
-			sessionDir,
-			SettingsManager.inMemory(),
-		);
+		const reopened = await createSessionManager(args({ sessionId: "renamed-id" }), projectDir, sessionDir);
 
 		expect(reopened.getSessionFile()).toBe(renamedPath);
 	});
@@ -229,12 +202,7 @@ describe("--session-id", () => {
 		});
 
 		await expect(
-			createSessionManager(
-				args({ fork: "source-id", sessionId: "existing-id" }),
-				projectDir,
-				sessionDir,
-				SettingsManager.inMemory(),
-			),
+			createSessionManager(args({ fork: "source-id", sessionId: "existing-id" }), projectDir, sessionDir),
 		).rejects.toThrow("exit:1");
 	});
 });

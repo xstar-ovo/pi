@@ -185,33 +185,6 @@ async function waitForProcessExit(pid: number, timeoutMs = 1000): Promise<boolea
 	return !isProcessAlive(pid);
 }
 
-function renderText(tool: ToolDefinition, result: AgentToolResult<unknown>, expanded = false): string {
-	if (!tool.renderResult) throw new Error("subagent tool has no result renderer");
-	const theme = {
-		fg: (_color: string, text: string) => text,
-		bold: (text: string) => text,
-	} as never;
-	const component = tool.renderResult(result, { expanded, isPartial: false }, theme, {
-		args: {},
-		state: {},
-		lastComponent: undefined,
-		invalidate: () => {},
-		toolCallId: "test",
-		cwd: "/tmp",
-		executionStarted: true,
-		argsComplete: true,
-		isPartial: false,
-		expanded,
-		showImages: false,
-		isError: false,
-		durationMs: undefined,
-		outputPad: 0,
-		keyText: () => "",
-		keyHint: (_keybinding, description) => description,
-	});
-	return component.render(160).join("\n");
-}
-
 describe("subagent example extension", () => {
 	let tempDir: string;
 	let tool: ToolDefinition;
@@ -261,11 +234,9 @@ describe("subagent example extension", () => {
 
 			await firstUpdate;
 			const streamingStatus = detailsOf(updates[0]).results[0].status;
-			const streamingRender = renderText(tool, updates[0]);
 			const result = await execution;
 
 			expect(streamingStatus).toBe("running");
-			expect(streamingRender).toContain("running");
 			expect(detailsOf(result).results[0].status).toBe("completed");
 		});
 
@@ -293,14 +264,17 @@ describe("subagent example extension", () => {
 			expect(statuses.filter((status) => status === "pending")).toHaveLength(1);
 		});
 
-		it("treats signal termination as a failed child with a diagnostic", async () => {
-			const result = await executeSubagent(singleTask(fixtureScenario.signal));
+		it.skipIf(process.platform === "win32")(
+			"treats signal termination as a failed child with a diagnostic",
+			async () => {
+				const result = await executeSubagent(singleTask(fixtureScenario.signal));
 
-			const child = detailsOf(result).results[0];
-			expect(child.status).toBe("failed");
-			expect(child.terminationSignal).toBe("SIGTERM");
-			expect(resultText(result)).toContain("SIGTERM");
-		});
+				const child = detailsOf(result).results[0];
+				expect(child.status).toBe("failed");
+				expect(child.terminationSignal).toBe("SIGTERM");
+				expect(resultText(result)).toContain("SIGTERM");
+			},
+		);
 
 		it("preserves spawn errors for a nonexistent working directory", async () => {
 			const result = await executeSubagent(
@@ -626,16 +600,6 @@ describe("subagent example extension", () => {
 			expect(fullText.split("\n").length).toBeGreaterThan(DEFAULT_MAX_LINES);
 		});
 
-		it("shows failure diagnostics in collapsed results", async () => {
-			const result = await executeSubagent({
-				chain: [{ agent: "worker", task: fixtureScenario.signal }],
-				agentScope: "project",
-				confirmProjectAgents: false,
-			});
-
-			expect(renderText(tool, result)).toContain("SIGTERM");
-		});
-
 		function runFailedChain(task: string = fixtureScenario.error): Promise<AgentToolResult<unknown>> {
 			return executeSubagent({
 				chain: [{ agent: "worker", task }],
@@ -651,14 +615,14 @@ describe("subagent example extension", () => {
 			expect.soft(child.stderr).toContain("stderr evidence");
 			expect.soft(finalAssistantText(result)).toContain("assistant evidence");
 
-			const expanded = renderText(tool, result, true);
-			expect.soft(expanded).toContain("provider evidence");
-			expect.soft(expanded).toContain("stderr evidence");
-			expect.soft(expanded).toContain("assistant evidence");
+			const text = resultText(result);
+			expect.soft(text).toContain("provider evidence");
+			expect.soft(text).toContain("stderr evidence");
+			expect.soft(text).toContain("assistant evidence");
 		});
 
-		it("renders zero-exit model errors as failed chain steps", async () => {
-			expect(renderText(tool, await runFailedChain(fixtureScenario.modelError))).toContain("0/1 steps");
+		it("reports zero-exit model errors as failed chain steps", async () => {
+			expect(resultText(await runFailedChain(fixtureScenario.modelError))).toContain("Chain stopped at step 1");
 		});
 	});
 });

@@ -406,31 +406,6 @@ describe("extensions discovery", () => {
 		expect(result.extensions[0].tools.has("parse_duration")).toBe(true);
 	});
 
-	it("registers message and entry renderers", async () => {
-		const extCode = `
-			export default function(pi) {
-				pi.registerMarkdownTransformer((markdown) => {
-					return markdown;
-				});
-				pi.registerMessageRenderer("my-custom-type", (message, options, theme) => {
-					return null; // Use default rendering
-				});
-				pi.registerEntryRenderer("my-entry-type", (entry, options, theme) => {
-					return null;
-				});
-			}
-		`;
-		fs.writeFileSync(path.join(extensionsDir, "with-renderer.ts"), extCode);
-
-		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-
-		expect(result.errors).toHaveLength(0);
-		expect(result.extensions).toHaveLength(1);
-		expect(result.extensions[0].markdownTransformer).toBeDefined();
-		expect(result.extensions[0].messageRenderers.has("my-custom-type")).toBe(true);
-		expect(result.extensions[0].entryRenderers?.has("my-entry-type")).toBe(true);
-	});
-
 	it("reports error when extension throws during initialization", async () => {
 		const extCode = `
 			export default function(pi) {
@@ -497,24 +472,6 @@ describe("extensions discovery", () => {
 		expect(result.extensions[0].handlers.has("agent_start")).toBe(true);
 		expect(result.extensions[0].handlers.has("tool_call")).toBe(true);
 		expect(result.extensions[0].handlers.has("agent_end")).toBe(true);
-	});
-
-	it("loads extension with shortcuts", async () => {
-		const extCode = `
-			export default function(pi) {
-				pi.registerShortcut("ctrl+t", {
-					description: "Test shortcut",
-					handler: async (ctx) => {},
-				});
-			}
-		`;
-		fs.writeFileSync(path.join(extensionsDir, "with-shortcut.ts"), extCode);
-
-		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-
-		expect(result.errors).toHaveLength(0);
-		expect(result.extensions).toHaveLength(1);
-		expect(result.extensions[0].shortcuts.has("ctrl+t")).toBe(true);
 	});
 
 	it("loads extension with flags", async () => {

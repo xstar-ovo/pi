@@ -277,19 +277,6 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_OAUTH_T
 		expect(state.messageCount).toBe(0);
 	}, 90000);
 
-	test("should export to HTML", async () => {
-		await client.start();
-
-		// Send a prompt first
-		await client.promptAndWait("Hello");
-
-		// Export
-		const result = await client.exportHtml();
-		expect(result.path).toBeDefined();
-		expect(result.path.endsWith(".html")).toBe(true);
-		expect(existsSync(result.path)).toBe(true);
-	}, 90000);
-
 	test("should get last assistant text", async () => {
 		await client.start();
 

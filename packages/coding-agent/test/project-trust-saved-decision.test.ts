@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createProjectTrustContext } from "../src/cli/project-trust.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import { resolveProjectTrusted } from "../src/core/project-trust.ts";
-import { SettingsManager } from "../src/core/settings-manager.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 
 const cliPath = resolve(__dirname, "../src/cli.ts");
@@ -135,9 +134,7 @@ describe("saved project trust for projects without trust-requiring resources", (
 				trustStore,
 				projectTrustContext: createProjectTrustContext({
 					cwd: dirs.projectDir,
-					mode: "print",
-					settingsManager: SettingsManager.inMemory(),
-					hasUI: false,
+					mode: "sdk",
 				}),
 			});
 

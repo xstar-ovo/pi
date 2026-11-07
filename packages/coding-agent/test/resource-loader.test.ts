@@ -37,7 +37,6 @@ describe("DefaultResourceLoader", () => {
 			expect(loader.getExtensions().extensions).toEqual([]);
 			expect(loader.getSkills().skills).toEqual([]);
 			expect(loader.getPrompts().prompts).toEqual([]);
-			expect(loader.getThemes().themes).toEqual([]);
 		});
 
 		it("should not treat a project manifest as the owner of a project extension", async () => {
@@ -319,9 +318,6 @@ Project skill`,
 
 			const skill = loader.getSkills().skills.find((s) => s.name === "collision-skill");
 			expect(skill?.filePath).toBe(projectSkillPath);
-
-			const theme = loader.getThemes().themes.find((t) => t.name === "collision-theme");
-			expect(theme?.sourcePath).toBe(projectThemePath);
 		});
 
 		it("should load symlinked user and project extensions once", async () => {
@@ -503,12 +499,10 @@ Content`,
 			const { extensions } = loader.getExtensions();
 			const { skills } = loader.getSkills();
 			const { prompts } = loader.getPrompts();
-			const { themes } = loader.getThemes();
 
 			expect(extensions.some((e) => e.path.endsWith("disabled.ts"))).toBe(false);
 			expect(skills.some((s) => s.name === "skip-skill")).toBe(false);
 			expect(prompts.some((p) => p.name === "skip")).toBe(false);
-			expect(themes.some((t) => t.sourcePath?.endsWith("skip.json"))).toBe(false);
 		});
 
 		it("should discover AGENTS.md context files", async () => {
@@ -624,7 +618,6 @@ Project skill content`,
 			expect(loader.getExtensions().errors).toEqual([]);
 			expect(loader.getSkills().skills.some((skill) => skill.name === "project-skill")).toBe(false);
 			expect(loader.getPrompts().prompts.some((prompt) => prompt.name === "project")).toBe(false);
-			expect(loader.getThemes().themes.some((theme) => theme.name === "project-theme")).toBe(false);
 		});
 
 		it("should discover APPEND_SYSTEM.md", async () => {
@@ -826,14 +819,12 @@ Extra content`,
 
 		// Regression: extension discovery used to drop package scope/source, collapsing every
 		// autocomplete source tag to [t]. See issue #6968.
-		it("should keep package metadata for skills, prompts, and themes", async () => {
+		it("should keep package metadata for skills and prompts", async () => {
 			const packageRoot = join(agentDir, "npm", "node_modules", "metadata-pkg");
 			const packageSkillDir = join(packageRoot, "skills", "package-skill");
 			const packagePromptsDir = join(packageRoot, "prompts");
-			const packageThemesDir = join(packageRoot, "themes");
 			mkdirSync(packageSkillDir, { recursive: true });
 			mkdirSync(packagePromptsDir, { recursive: true });
-			mkdirSync(packageThemesDir, { recursive: true });
 			writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "metadata-pkg", version: "1.0.0" }));
 			writeFileSync(
 				join(packageSkillDir, "SKILL.md"),
@@ -850,21 +841,11 @@ description: Package prompt
 ---
 Package prompt content`,
 			);
-			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string };
-			writeFileSync(
-				join(packageThemesDir, "package-theme.json"),
-				JSON.stringify({ ...baseTheme, name: "package-theme" }),
-			);
-
 			const extensionResourceDir = join(tempDir, "extension-resources");
 			const extensionSkillDir = join(extensionResourceDir, "extension-skill");
 			const extensionPromptsDir = join(extensionResourceDir, "prompts");
-			const extensionThemesDir = join(extensionResourceDir, "themes");
 			mkdirSync(extensionSkillDir, { recursive: true });
 			mkdirSync(extensionPromptsDir, { recursive: true });
-			mkdirSync(extensionThemesDir, { recursive: true });
 			writeFileSync(
 				join(extensionSkillDir, "SKILL.md"),
 				`---
@@ -879,10 +860,6 @@ Extension skill content`,
 description: Extension prompt
 ---
 Extension prompt content`,
-			);
-			writeFileSync(
-				join(extensionThemesDir, "extension.json"),
-				JSON.stringify({ ...baseTheme, name: "extension-theme" }),
 			);
 
 			const loader = new DefaultResourceLoader({
@@ -900,7 +877,6 @@ Extension prompt content`,
 			loader.extendResources({
 				skillPaths: [{ path: extensionSkillDir, metadata: extensionMetadata }],
 				promptPaths: [{ path: extensionPromptsDir, metadata: extensionMetadata }],
-				themePaths: [{ path: extensionThemesDir, metadata: extensionMetadata }],
 			});
 
 			const packageSourceInfo = { source: "npm:metadata-pkg", scope: "user", origin: "package" };
@@ -910,9 +886,6 @@ Extension prompt content`,
 			expect(
 				loader.getPrompts().prompts.find((prompt) => prompt.name === "package-prompt")?.sourceInfo,
 			).toMatchObject(packageSourceInfo);
-			expect(loader.getThemes().themes.find((theme) => theme.name === "package-theme")?.sourceInfo).toMatchObject(
-				packageSourceInfo,
-			);
 
 			expect(loader.getSkills().skills.find((skill) => skill.name === "extension-skill")?.sourceInfo).toMatchObject(
 				extensionMetadata,
@@ -920,9 +893,6 @@ Extension prompt content`,
 			expect(
 				loader.getPrompts().prompts.find((prompt) => prompt.name === "extension-prompt")?.sourceInfo,
 			).toMatchObject(extensionMetadata);
-			expect(loader.getThemes().themes.find((theme) => theme.name === "extension-theme")?.sourceInfo).toMatchObject(
-				extensionMetadata,
-			);
 		});
 	});
 

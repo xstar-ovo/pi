@@ -53,7 +53,6 @@ describe("regression #3616: in-memory settings survive reload", () => {
 			noExtensions: true,
 			noSkills: true,
 			noPromptTemplates: true,
-			noThemes: true,
 			noContextFiles: true,
 		});
 

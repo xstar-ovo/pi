@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { convertToPng, loadPngTranscoder } from "../src/utils/image-convert.ts";
+import { convertToPng } from "../src/utils/image-convert.ts";
 import { formatDimensionNote, resizeImage } from "../src/utils/image-resize.ts";
 import { resizeImageInProcess } from "../src/utils/image-resize-core.ts";
 import { loadPhoton } from "../src/utils/photon.ts";
@@ -110,13 +110,6 @@ describe("convertToPng", () => {
 });
 
 // Issue #10292: pi-tui uses this transcoder to show non-PNG images on Kitty-protocol terminals.
-it("loadPngTranscoder converts synchronously to oriented PNG data", async () => {
-	const transcoder = (await loadPngTranscoder())!;
-	const png = Buffer.from(transcoder(jpegWithXmpBeforeOrientation(), "image/jpeg")!, "base64");
-	expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1, 2]);
-	expect(transcoder(Buffer.from("not an image").toString("base64"), "image/jpeg")).toBeNull();
-});
-
 describe("resizeImage", () => {
 	it("should keep caller input bytes intact", async () => {
 		const input = new Uint8Array(imageBytes(TINY_PNG));

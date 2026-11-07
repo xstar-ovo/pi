@@ -57,7 +57,6 @@ describe.skipIf(!API_KEY)("AgentSession forking", () => {
 				noExtensions: true,
 				noSkills: true,
 				noPromptTemplates: true,
-				noThemes: true,
 			},
 		};
 		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
