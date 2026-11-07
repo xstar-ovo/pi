@@ -17,11 +17,6 @@ export const workspaceSourcePaths = {
 	chordPlugins: fileURLToPath(new URL("./packages/chord/src/node/plugins/index.ts", import.meta.url)),
 	chordPluginsRuntime: fileURLToPath(new URL("./packages/chord/src/node/plugins/runtime.ts", import.meta.url)),
 	chordApp: fileURLToPath(new URL("./packages/chord/src/node/app/index.ts", import.meta.url)),
-	chordWeb: fileURLToPath(new URL("./packages/chord/src/web/index.ts", import.meta.url)),
-	chordSurfaces: fileURLToPath(new URL("./packages/chord/src/node/surfaces/index.ts", import.meta.url)),
-	chordReact: fileURLToPath(new URL("./packages/chord/src/react/index.ts", import.meta.url)),
-	chordTui: fileURLToPath(new URL("./packages/chord/src/tui/index.ts", import.meta.url)),
-	chordTuiLauncher: fileURLToPath(new URL("./packages/chord/src/node/tui/index.ts", import.meta.url)),
 	telemetryIndex: fileURLToPath(new URL("./packages/telemetry/src/index.ts", import.meta.url)),
 	telemetryTesting: fileURLToPath(new URL("./packages/telemetry/src/testing/index.ts", import.meta.url)),
 	mcpIndex: fileURLToPath(new URL("./packages/mcp/src/index.ts", import.meta.url)),
@@ -39,7 +34,6 @@ export const workspaceSourcePaths = {
 	codemodeDeclarations: fileURLToPath(new URL("./packages/codemode/src/declarations.ts", import.meta.url)),
 	codemodeSource: fileURLToPath(new URL("./packages/codemode/src/source.ts", import.meta.url)),
 	codingAgentIndex: fileURLToPath(new URL("./packages/coding-agent/src/index.ts", import.meta.url)),
-	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 } as const;
 
 export default defineConfig({
@@ -60,11 +54,6 @@ export default defineConfig({
 			{ find: /^@earendil-works\/chord\/plugins$/, replacement: workspaceSourcePaths.chordPlugins },
 			{ find: /^@earendil-works\/chord\/plugins\/runtime$/, replacement: workspaceSourcePaths.chordPluginsRuntime },
 			{ find: /^@earendil-works\/chord\/app$/, replacement: workspaceSourcePaths.chordApp },
-			{ find: /^@earendil-works\/chord\/web$/, replacement: workspaceSourcePaths.chordWeb },
-			{ find: /^@earendil-works\/chord\/surfaces$/, replacement: workspaceSourcePaths.chordSurfaces },
-			{ find: /^@earendil-works\/chord\/react$/, replacement: workspaceSourcePaths.chordReact },
-			{ find: /^@earendil-works\/chord\/tui$/, replacement: workspaceSourcePaths.chordTui },
-			{ find: /^@earendil-works\/chord\/tui\/launcher$/, replacement: workspaceSourcePaths.chordTuiLauncher },
 			{ find: /^@earendil-works\/pi-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
 			{ find: /^@earendil-works\/pi-telemetry\/testing$/, replacement: workspaceSourcePaths.telemetryTesting },
 			{ find: /^@earendil-works\/pi-mcp$/, replacement: workspaceSourcePaths.mcpIndex },
@@ -90,7 +79,6 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-codemode$/, replacement: workspaceSourcePaths.codemodeIndex },
 			{ find: /^@earendil-works\/pi-codemode\/declarations$/, replacement: workspaceSourcePaths.codemodeDeclarations },
 			{ find: /^@earendil-works\/pi-codemode\/source$/, replacement: workspaceSourcePaths.codemodeSource },
-			{ find: /^@earendil-works\/pi-tui$/, replacement: workspaceSourcePaths.tuiIndex },
 		],
 	},
 });
