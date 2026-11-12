@@ -1,3 +1,16 @@
+/**
+ * 文件功能：会话存储 —— 把一次会话写成追加式 entry 流，并还原成模型要看的消息数组。
+ *
+ * 两个概念要分开：
+ *   entry              每次变更追加一行（message / model_change / thinking_level_change /
+ *                      compactionSummary / branchSummary …），写入后不可改，是整个会话的真相
+ *   projection         buildSessionContext() 把 entry 流还原成 transcript；模型看到什么由它决定
+ *
+ * 阶段 A 只需三个位置：
+ *   getDefaultSessionDirPath（约 590 行）  会话目录命名：<agentDir>/sessions/--<cwd>--/
+ *   buildSessionContext                    entry 流 → 消息数组（判断续接还是新会话）
+ *   inMemory(cwd)                          不落盘，但保留 cwd 供工具使用
+ */
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	type AssistantMessage,
@@ -573,7 +586,7 @@ export function buildSessionProjection(
 	};
 }
 
-/** Build the finalized model context from the canonical session projection. */
+/** 从规范的会话投影构建最终的模型上下文（transcript + 模型 + 思考档位）。 */
 export function buildSessionContext(
 	entries: SessionEntry[],
 	leafId?: string | null,
@@ -584,8 +597,8 @@ export function buildSessionContext(
 }
 
 /**
- * Compute the default session directory for a cwd.
- * Encodes cwd into a safe directory name under ~/.pi/agent/sessions/.
+ * 算出一个 cwd 对应的默认会话目录。
+ * 把 cwd 编码成 ~/.pi/agent/sessions/ 下的安全目录名。
  */
 function getDefaultSessionDirPath(cwd: string, agentDir: string = getDefaultAgentDir()): string {
 	const resolvedCwd = resolvePath(cwd);
@@ -604,7 +617,7 @@ export function getDefaultSessionDir(cwd: string, agentDir: string = getDefaultA
 
 const SESSION_READ_BUFFER_SIZE = 1024 * 1024;
 const SESSION_HEADER_READ_BUFFER_SIZE = 4096;
-/** Bound synchronous header discovery while allowing large cwd and custom metadata fields. */
+/** 限制同步读 header 的开销，同时容得下很长的 cwd 与自定义元数据字段。 */
 const MAX_SESSION_HEADER_SCAN_BYTES = 1024 * 1024;
 
 class SessionHeaderScanLimitError extends Error {
@@ -1759,9 +1772,9 @@ export class SessionManager {
 	}
 
 	/**
-	 * Create a new session.
-	 * @param cwd Working directory (stored in session header)
-	 * @param sessionDir Optional session directory. If omitted, uses default (~/.pi/agent/sessions/<encoded-cwd>/).
+	 * 新建一个会话。
+	 * @param cwd 工作目录（写进会话头）
+	 * @param sessionDir 可选的会话目录。省略时用默认值（~/.pi/agent/sessions/<编码后的-cwd>/）。
 	 */
 	static create(cwd: string, sessionDir?: string, options?: NewSessionOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
@@ -1811,7 +1824,7 @@ export class SessionManager {
 		return new SessionManager(cwd, dir, undefined, true);
 	}
 
-	/** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */
+	/** 创建内存会话（不落盘），可选地从文件系统之外传入的 entry 初始化。 */
 	static inMemory(cwd: string = process.cwd(), options?: NewSessionOptions, entries?: FileEntry[]): SessionManager {
 		return new SessionManager(cwd, "", undefined, false, options, entries);
 	}

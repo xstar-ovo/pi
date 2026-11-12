@@ -1,16 +1,20 @@
 /**
- * AgentSession - Core abstraction for agent lifecycle and session management.
+ * 文件功能：应用层会话外壳 —— 在 agent 核心循环外面包一层应用语义。
  *
- * This class is shared between all run modes (interactive, print, rpc).
- * It encapsulates:
- * - Agent state access
- * - Event subscription with automatic session persistence
- * - Model and thinking level management
- * - Compaction (manual and auto)
- * - Bash execution
- * - Session switching and branching
+ * 所有运行模式（interactive / print / rpc / http）共用本类。包装的能力：
+ * - agent 状态访问与工具注册表
+ * - 事件订阅 + 自动会话持久化（agent 事件 → session 事件，再写 entry）
+ * - 模型与思考档位管理
+ * - 压缩（手动与自动）、重试、分支与导航
+ * - bash 执行、输入钩子、扩展命令
  *
- * Modes use this class and add their own I/O layer on top.
+ * 阶段 A 只看装配段（约 60 行）：
+ *   constructor（515）                config 字段落位
+ *   agent.subscribe（543）            建立 agent 事件 → session 事件转发
+ *   beforeToolCall / afterToolCall（711-712）  权限与审计钩子
+ *   prepareRequest（846）             每轮请求前改模型/工具/系统提示
+ *   finishTurn（945）                 压缩、重试、自动继续的判断点
+ *   transformContext（1855-1876）     扩展 emitContext 接入点
  */
 
 import { readFileSync } from "node:fs";

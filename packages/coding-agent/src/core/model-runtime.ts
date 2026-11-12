@@ -1,3 +1,15 @@
+/**
+ * 文件功能：模型与凭据运行时 —— 把 pi-ai 的纯函数能力接到磁盘上的凭据与目录。
+ *
+ * pi-ai 里的 streamSimple(model, context, {apiKey}) 是纯函数，它不管 key 从哪来。
+ * ModelRuntime 负责：
+ *   1. 从 auth.json / 环境变量 / OAuth 三处解析凭据（含临时 key、登录/登出同步）
+ *   2. 维护模型注册表（内置目录 + models.json 自定义 provider + 远端目录缓存）
+ *   3. getAvailable() 只返回“能解析出有效凭据”的模型
+ *   4. streamSimple() 作为 agent 默认流函数的实现（见 sdk.ts 里的 streamFn）
+ *
+ * 阶段 A 只需看 4 个方法：create / getModel / getAvailable / streamSimple。
+ */
 import { dirname, join } from "node:path";
 import {
 	type AnyModel,

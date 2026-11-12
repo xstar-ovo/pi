@@ -1,5 +1,12 @@
 /**
- * System prompt construction and project context loading
+ * 文件功能：系统提示构建 —— 把资源与工具信息拼成分节的系统提示（sections）。
+ *
+ * 关键设计：系统提示不是一个大字符串，而是 { preamble, tools, skills, cwd, ... } 的分节结构，
+ * 其中 content 为空（buildSystemPromptState，约 198-204 行）：
+ *   buildSystemPromptSections（约 187-195）  preamble 原样，其余包成 <name>…</name>
+ *   buildSystemPromptState                  content: ""，由 sections 承载；只有 forceSystemPrompt 才用 content
+ *   diffSystemPromptSections（约 210）      比较新旧 sections，得出差异补丁
+ * 好处：工具集变化时只发变化的 section；稳定前缀不变，prompt cache 才能命中。
  */
 
 import { getSystemMessageText } from "@earendil-works/pi-ai";
@@ -7,32 +14,32 @@ import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 
 export interface BuildSystemPromptOptions {
-	/** Custom system prompt (replaces the default prefix). */
+	/** 自定义系统提示（替换默认前缀）。 */
 	customPrompt?: string;
-	/** Exact full prompt replacement set by a before_agent_start handler. */
+	/** 由 before_agent_start 处理器设置的完整提示替换。 */
 	forceSystemPrompt?: string;
-	/** Tools to include in prompt. Default: [read, bash, edit, write]. */
+	/** 要写进提示的工具。默认：[read, bash, edit, write]。 */
 	selectedTools?: string[];
 	/**
-	 * Selected tools whose declarations requests leave out (`prepareLoadout` hidden declarations).
-	 * They are reachable only through another tool, so the tool list and rules leave them out too.
+	 * 已选中但请求里不声明出来的工具（prepareLoadout 隐藏声明）。
+	 * 它们只能经由另一个工具触达，所以工具列表与规则里也不列出。
 	 */
 	hiddenTools?: string[];
-	/** Optional one-line tool snippets keyed by tool name. */
+	/** 可选的一行工具简介，按工具名索引。 */
 	toolSnippets?: Record<string, string>;
-	/** Guideline bullets contributed by each tool, keyed by tool name. */
+	/** 每个工具贡献的规则条目，按工具名索引。 */
 	toolGuidelines?: Record<string, string[]>;
-	/** Additional guideline bullets appended to the default system prompt rules. */
+	/** 追加到默认系统提示规则后面的额外规则条目。 */
 	promptGuidelines?: string[];
-	/** Text appended from user configuration before project context, skills, and cwd. */
+	/** 来自用户配置的追加文本，位置在项目上下文、技能、cwd 之前。 */
 	appendSystemPrompt?: string;
-	/** Additional XML-wrapped prompt sections keyed by tag name. */
+	/** 额外的系统提示分节，按标签名索引，会被包成 XML 标签。 */
 	sections?: Record<string, string>;
-	/** Working directory. */
+	/** 工作目录。 */
 	cwd: string;
-	/** Pre-loaded context files. */
+	/** 预加载的上下文文件。 */
 	contextFiles?: Array<{ path: string; content: string }>;
-	/** Pre-loaded skills. */
+	/** 预加载的技能。 */
 	skills?: Skill[];
 }
 
@@ -49,14 +56,13 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 };
 
 /**
- * Ordered system prompt sections, keyed by name. `preamble` is untagged text; every other
- * section is wrapped in a tag of the same name so the model can match later updates to it.
- * These become `SystemMessage.sections` in the transcript.
+ * 有序的系统提示分节，按名称索引。`preamble` 是不带标签的文本，其余每节都包在同名标签里，
+ * 方便模型把后续更新对到对应节。它们最终成为 transcript 里的 `SystemMessage.sections`。
  */
 export type SystemPromptSections = Record<string, string>;
 
 const SYSTEM_PROMPT_SECTION_NAME = /^[a-z][a-z0-9_-]*$/;
-/** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
+/** 把提示输入规整成扩充可写、集合字段齐全的形状，供扩展修改。 */
 export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOptions): NormalizedBuildSystemPromptOptions {
 	return {
 		customPrompt: input.customPrompt,
@@ -124,7 +130,7 @@ function buildRules(
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
 
-/** Build the ordered, independently replaceable sections of the structured system prompt. */
+/** 构建结构化系统提示的各节（有序、可单独替换）。 */
 export function buildSystemPromptSections(input: BuildSystemPromptOptions): SystemPromptSections {
 	const options = normalizeBuildSystemPromptOptions(input);
 	const {
@@ -170,7 +176,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
-	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
+	// 隐藏的读文件工具仍可经由另一个工具触达，所以技能保留，只是提示里不点名具体工具。
 	const readers = ["read", "bash"] as const;
 	const skillFileReadTool =
 		readers.find((tool) => declaredTools.includes(tool)) ??
@@ -192,8 +198,8 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 }
 
 /**
- * The complete prompt state for `input`. A forced prompt is opaque and lives in `content`
- * with no sections; otherwise `content` is empty and the structured sections carry the prompt.
+ * `input` 对应的完整提示状态。强制指定的提示是不透明的，全部放在 `content` 里且没有 sections；
+ * 否则 `content` 为空，由结构化 sections 承载提示。
  */
 export function buildSystemPromptState(input: BuildSystemPromptOptions): {
 	content: string;
@@ -203,15 +209,14 @@ export function buildSystemPromptState(input: BuildSystemPromptOptions): {
 	return { content: "", sections: buildSystemPromptSections(input) };
 }
 
-/** Build the system prompt text, rendered exactly as the transcript's system message replays it. */
+/** 生成系统提示文本，与 transcript 回放系统消息时完全一致。 */
 export function buildSystemPrompt(input: BuildSystemPromptOptions): string {
 	return getSystemMessageText({ role: "system", ...buildSystemPromptState(input), timestamp: 0 });
 }
 
 /**
- * Diff the sections the model currently has (replayed from the transcript, so never null)
- * against the desired ones. Returns a `SystemMessage.sections` patch, or undefined when
- * nothing changed.
+ * 把模型当前持有的 sections（从 transcript 回放，永远不会是 null）与期望值做差，
+ * 返回 `SystemMessage.sections` 补丁；无变化时返回 undefined。
  */
 export function diffSystemPromptSections(
 	previous: Record<string, string | null>,

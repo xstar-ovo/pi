@@ -1,3 +1,15 @@
+/**
+ * 文件功能：资源发现与加载 —— 从 cwd 与 agentDir 扫描出扩展、技能、prompt 模板、AGENTS.md。
+ *
+ * ResourceLoader 接口只有 9 个方法（约 176-186 行），这就是“默认帮你发现了什么”的完整清单：
+ *   getExtensions / getSkills / getPrompts / getAgentsFiles
+ *   getSystemPrompt / getSystemPromptSource
+ *   getAppendSystemPrompt / getAppendSystemPromptSources
+ *   extendResources / reload
+ *
+ * DefaultResourceLoader（约 331 行）是实现体：@example 12-full-control.ts 里手写那 10 个方法
+ * 相当于把本类的行为全部置空。
+ */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import chalk from "chalk";

@@ -1,3 +1,14 @@
+/**
+ * 文件功能：配置管理器 —— 全局与项目两级 settings.json 的读取、校验、合并与写入。
+ *
+ * 关键常量与函数（阶段 A 只需这三处）：
+ *   DEFAULT_TOOL_NAMES（约 89 行）      默认工具集：read / bash / edit / write
+ *   applyToolModifiers（约 143 行）     +name / -name 在默认集上增删
+ *   deepMergeSettings（约 147 行）      全局与项目两级合并，未知字段保留
+ *
+ * 合并顺序：全局 ~/.pi/agent/settings.json  ← 项目 <cwd>/.pi/settings.json
+ * 后者覆盖前者，对象类型是递归合并而不是整体替换。
+ */
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 
@@ -85,18 +96,17 @@ function deepMergeObjects(base: Record<string, unknown>, overrides: Record<strin
 	return result;
 }
 
-/** Tools enabled at startup when `defaultTools` does not change them. */
+/** `defaultTools` 未改变时，启动时启用的工具集。 */
 export const DEFAULT_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write"];
 
-/** Whether a tool selection entry is a `+name` or `-name` modifier. */
+/** 判断工具选择条目是否是 `+name` 或 `-name` 修饰符。 */
 export function isToolModifier(entry: unknown): boolean {
 	return typeof entry === "string" && (entry.startsWith("+") || entry.startsWith("-"));
 }
 
 /**
- * Validate a tool list from `--tools` or the SDK `tools` option. It is either an allowlist of plain
- * names and patterns or a list of only `+name`/`-name` entries with exact names. Returns the
- * problem, or undefined when the list is valid.
+ * 校验 `--tools` 选项或 SDK 的 `tools` 参数。它要么是普通名字/模式的白名单，要么是只含
+ * `+name`/`-name`（精确名）的列表。合法时返回 undefined，否则返回问题描述。
  */
 export function getToolListError(entries: readonly string[]): string | undefined {
 	const modifiers = entries.filter(isToolModifier);
@@ -108,8 +118,8 @@ export function getToolListError(entries: readonly string[]): string | undefined
 }
 
 /**
- * Apply the `+name` and `-name` entries of `entries` to `base` in order: `+name` adds a tool and
- * `-name` removes one. Other entries are ignored.
+ * 按顺序把 `entries` 里的 `+name` / `-name` 应用到 `base`：`+name` 加一个工具，`-name` 删一个。
+ * 其他条目忽略。
  */
 export function applyToolModifiers(base: readonly string[], entries: readonly string[]): string[] {
 	const tools = [...base];
@@ -124,26 +134,26 @@ export function applyToolModifiers(base: readonly string[], entries: readonly st
 }
 
 /**
- * Merge `defaultTools` of two settings layers. A list with plain tool names replaces the inherited
- * one; a list of only `+name`/`-name` entries is appended, so it modifies the inherited selection.
+ * 合并两层配置的 `defaultTools`。含普通工具名的列表直接替换继承值；
+ * 只含 `+name`/`-name` 的列表则是追加，从而“修改”而不是“替换”继承来的选择。
  */
 function mergeDefaultTools(base: string[] | undefined, overrides: string[] | undefined): string[] | undefined {
 	if (overrides === undefined) return base;
-	// Settings files are not validated; a malformed value replaces instead of throwing here.
+	// 配置文件不做严格校验；值不合法时直接替换，不在这里抛错。
 	if (!Array.isArray(base) || !Array.isArray(overrides) || !overrides.every(isToolModifier)) return overrides;
 	return [...base, ...overrides];
 }
 
 /**
- * Resolve a merged `defaultTools` list: plain names replace `DEFAULT_TOOL_NAMES`, then `+name` adds
- * and `-name` removes a tool, in list order.
+ * 解析合并后的 `defaultTools`：普通名字替换 `DEFAULT_TOOL_NAMES`，再由 `+name` 加、`-name` 删，
+ * 按列表顺序执行。
  */
 function resolveDefaultTools(entries: string[]): string[] {
 	const plain = entries.filter((entry) => !isToolModifier(entry));
 	return applyToolModifiers(plain.length > 0 || entries.length === 0 ? plain : DEFAULT_TOOL_NAMES, entries);
 }
 
-/** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
+/** 深度合并配置：项目/覆盖层优先，嵌套对象递归合并 */
 function deepMergeSettings(base: Settings, overrides: Settings): Settings {
 	const merged = deepMergeObjects(base as Record<string, unknown>, overrides as Record<string, unknown>) as Settings;
 	const defaultTools = mergeDefaultTools(base.defaultTools, overrides.defaultTools);

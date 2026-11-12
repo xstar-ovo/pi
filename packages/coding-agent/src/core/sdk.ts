@@ -1,3 +1,19 @@
+/**
+ * 文件功能：SDK 装配层 —— 把配置、凭据、会话、资源、工具拼装成一个可用的 AgentSession。
+ *
+ * 这是阶段 A 的入口文件。createAgentSession() 按顺序解析 7 件事：
+ *   1. cwd / agentDir（默认 process.cwd() 与 ~/.pi/agent）
+ *   2. ModelRuntime（读 auth.json、models.json，封装 pi-ai 的流式调用）
+ *   3. SettingsManager（全局 + 项目两级配置合并）与 SessionManager（会话落盘）
+ *   4. DefaultResourceLoader（发现 skills / extensions / prompts / AGENTS.md）
+ *   5. 模型解析链：会话记录 → settings 默认 → provider 默认
+ *   6. thinkingLevel 解析链，并用 clampThinkingLevel 按模型能力夹紧
+ *   7. 工具集解析（defaultTools + +/- 修饰符 + allow/deny）后交给 AgentSession
+ *
+ * 阅读路线：本文件的 createAgentSession（约 196 行）→ 其中注入的 streamFn（约 412 行）
+ * → 结尾的 new AgentSession（约 455 行）。
+ * 注意：agent 核心不依赖 pi-ai，默认流函数由本文件下方的 setDefaultStreamFn 注入。
+ */
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
@@ -40,82 +56,77 @@ import {
 } from "./tools/index.ts";
 import { getBranchSelection } from "./virtual-models.ts";
 
-// Preserve the pre-0.81 fallback for extensions that construct Agent instances
-// or invoke low-level agent loops without supplying streamFn. Agent core remains
-// provider-agnostic and does not import pi-ai/compat itself.
+// 保留 0.81 之前的行为：扩展可能自己 new Agent 或调用底层循环而不传 streamFn。
+// agent 核心保持与 provider 无关，因此它自己不 import pi-ai/compat。
 setDefaultStreamFn(streamSimple);
 
 export interface CreateAgentSessionOptions {
-	/** Working directory for project-local discovery. Default: process.cwd() */
+	/** 项目本地资源发现的工作目录。默认：process.cwd() */
 	cwd?: string;
-	/** Global config directory. Default: ~/.pi/agent */
+	/** 全局配置目录。默认：~/.pi/agent */
 	agentDir?: string;
 
-	/** Canonical model/auth runtime. Defaults to a runtime using agentDir/auth.json and models.json. */
+	/** 模型与凭据的运行时。默认使用 agentDir/auth.json 与 models.json 构造一个。 */
 	modelRuntime?: ModelRuntime;
 
-	/** Model to use. Default: from settings, else first available */
+	/** 使用的模型。默认：取 settings 里的配置，没有则取第一个可用模型 */
 	model?: Model<any>;
-	/** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
+	/** 思考档位。默认：取 settings 里的配置，没有则 'medium'（会被模型能力夹紧） */
 	thinkingLevel?: ThinkingLevel;
-	/** Models available for cycling (Ctrl+P in interactive mode) */
+	/** 可用于切换的模型列表（交互模式下的 Ctrl+P 轮换） */
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 
 	/**
-	 * Optional default tool suppression mode when no explicit allowlist is provided.
+	 * 未显式给出工具白名单时，对默认工具的压制模式。
 	 *
-	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write)
-	 *   but keep extension/custom tools enabled
+	 * - "all"：启动时不启用任何工具
+	 * - "builtin"：关闭默认内置工具（read、bash、edit、write），
+	 *   但保留扩展/自定义工具
 	 */
 	noTools?: "all" | "builtin";
 	/**
-	 * Optional allowlist of tool names or patterns, where `*` matches any characters.
+	 * 工具名或模式的白名单，其中 `*` 匹配任意字符。
 	 *
-	 * When omitted, pi uses the resolved `defaultTools` setting for the initial
-	 * selection when configured. Otherwise it enables the default built-in tools
-	 * (read, bash, edit, write). Extension/custom tools remain enabled unless
-	 * `noTools` changes that default. When provided, only matching tools are
-	 * enabled. MCP tools stay registered for codemode and tool search unless an
-	 * entry starts with `mcp__`; then only matching MCP tools are kept. An empty
-	 * list, like `noTools: "all"`, disables MCP tools too.
+	 * 省略时，若配置了 `defaultTools` 就按它决定初始选择，否则启用默认内置工具
+	 * （read、bash、edit、write）。扩展/自定义工具默认保持启用，除非 `noTools` 改变该默认值。
+	 * 提供本项时只启用匹配的工具。MCP 工具仍会注册给 codemode 与工具搜索，
+	 * 除非某一项以 `mcp__` 开头——那样只保留匹配的 MCP 工具。空列表（等同 `noTools: "all"`）
+	 * 会把 MCP 工具一起关掉。
 	 *
-	 * A list of only `+name` and `-name` entries is not an allowlist: it adds tools
-	 * to or removes them from the default selection, like the `defaultTools` setting.
-	 * These entries take exact names. Mixing them with plain entries throws.
+	 * 只含 `+name` 与 `-name` 的列表不是白名单：它是在默认选择上增删，语义同 `defaultTools` 设置。
+	 * 这类条目按精确名匹配。与普通条目混用会抛错。
 	 */
 	tools?: string[];
 	/**
-	 * Optional denylist of tool names or patterns to disable. Applies after `tools` when both are
-	 * provided, MCP tools included.
+	 * 工具名或模式的拒绝列表。与 `tools` 同时出现时在它之后生效，MCP 工具同样适用。
 	 */
 	excludeTools?: string[];
-	/** Custom tools to register (in addition to built-in tools). */
+	/** 额外注册的自定义工具（与内置工具并存）。 */
 	customTools?: ToolDefinition[];
 
-	/** Resource loader. When omitted, DefaultResourceLoader is used. */
+	/** 资源加载器。省略时使用 DefaultResourceLoader。 */
 	resourceLoader?: ResourceLoader;
 
-	/** Session manager. Default: SessionManager.create(cwd) */
+	/** 会话管理器。默认：SessionManager.create(cwd) */
 	sessionManager?: SessionManager;
 
-	/** Settings manager. Default: SettingsManager.create(cwd, agentDir) */
+	/** 配置管理器。默认：SettingsManager.create(cwd, agentDir) */
 	settingsManager?: SettingsManager;
-	/** Session start event metadata for extension runtime startup. */
+	/** 会话启动事件的元数据，供扩展运行时初始化使用。 */
 	sessionStartEvent?: SessionStartEvent;
 }
 
-/** Result from createAgentSession */
+/** createAgentSession 的返回结果 */
 export interface CreateAgentSessionResult {
-	/** The created session */
+	/** 创建出来的会话 */
 	session: AgentSession;
-	/** Extensions result (for UI context setup in interactive mode) */
+	/** 扩展加载结果（交互模式用它搭 UI 上下文） */
 	extensionsResult: LoadExtensionsResult;
-	/** Warning if session was restored with a different model than saved */
+	/** 会话恢复到的模型与保存的不一致时的警告文案 */
 	modelFallbackMessage?: string;
 }
 
-// Re-exports
+// 重新导出
 
 export * from "./agent-session-runtime.ts";
 export type {
@@ -134,7 +145,7 @@ export type { Tool } from "./tools/index.ts";
 
 export {
 	withFileMutationQueue,
-	// Tool factories (for custom cwd)
+	// 工具工厂（用于自定义 cwd）
 	createCodingTools,
 	createReadOnlyTools,
 	createReadTool,
@@ -147,33 +158,33 @@ export {
 	createPowerShellTool,
 };
 
-// Helper Functions
+// 辅助函数
 
 function getDefaultAgentDir(): string {
 	return getAgentDir();
 }
 
 /**
- * Create an AgentSession with the specified options.
+ * 按给定选项创建一个 AgentSession。
  *
  * @example
  * ```typescript
- * // Minimal - uses defaults
+ * // 最小用法——全走默认值
  * const { session } = await createAgentSession();
  *
- * // With explicit model
+ * // 显式指定模型
  * import { getModel } from '@earendil-works/pi-ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
  * });
  *
- * // Continue previous session
+ * // 继续上一个会话
  * const { session, modelFallbackMessage } = await createAgentSession({
  *   continueSession: true,
  * });
  *
- * // Full control
+ * // 全手工装配
  * const loader = new DefaultResourceLoader({
  *   cwd: process.cwd(),
  *   agentDir: getAgentDir(),
@@ -206,7 +217,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		time("resourceLoader.reload");
 	}
 
-	// Check if session has existing data to restore
+	// 先看会话里是否已有数据需要恢复
 	const existingSession = sessionManager.buildSessionContext();
 	const hasExistingSession = existingSession.messages.length > 0;
 	const hasThinkingEntry = sessionManager.getBranch().some((entry) => entry.type === "thinking_level_change");
@@ -214,13 +225,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	let model = options.model;
 	let modelFallbackMessage: string | undefined;
 
-	// Assistant messages name the physical model that answered, so a virtual selection is only in
-	// model_change entries.
+	// assistant 消息只记录真正作答的物理模型，所以虚拟选择只存在于
+	// model_change 条目里。
 	const sessionModel = getBranchSelection(sessionManager.getBranch(), (provider, modelId) =>
 		modelRuntime.getModel(provider, modelId),
 	);
 
-	// If session has data, try to restore model from it
+	// 会话里有数据时，优先用会话记录的模型
 	if (!model && hasExistingSession && sessionModel) {
 		const restoredModel = modelRuntime.getModel(sessionModel.provider, sessionModel.modelId);
 		if (restoredModel && modelRuntime.hasConfiguredAuth(restoredModel.provider)) {
@@ -231,7 +242,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 	}
 
-	// If still no model, use findInitialModel (checks settings default, then provider defaults)
+	// 仍然没有模型时用 findInitialModel（先看 settings 默认值，再看 provider 默认值）
 	if (!model) {
 		const result = await findInitialModel({
 			scopedModels: [],
@@ -252,14 +263,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	let thinkingLevel = options.thinkingLevel;
 
-	// If session has data, restore thinking level from it
+	// 会话里有数据时，恢复会话里记录的思考档位
 	if (thinkingLevel === undefined && hasExistingSession) {
 		thinkingLevel = hasThinkingEntry
 			? (existingSession.thinkingLevel as ThinkingLevel)
 			: (settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL);
 	}
 
-	// Fall back to per-model override, then global default
+	// 依次回退到每模型覆盖值、全局默认值
 	if (thinkingLevel === undefined && model) {
 		const perModel = settingsManager.getModelThinkingLevel(model.provider, model.id);
 		if (perModel) {
@@ -270,7 +281,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
 	}
 
-	// Clamp to model capabilities
+	// 按模型能力夹紧档位
 	if (!model) {
 		thinkingLevel = "off";
 	} else {
@@ -280,8 +291,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const toolListError = options.tools ? getToolListError(options.tools) : undefined;
 	if (toolListError) throw new Error(`Invalid tools option: ${toolListError}`);
 	const defaultToolNames = options.noTools ? [] : (settingsManager.getDefaultTools() ?? DEFAULT_TOOL_NAMES);
-	// A `tools` list of only `+name`/`-name` entries changes the default selection instead of
-	// replacing it, like the `defaultTools` setting.
+	// 只含 `+name`/`-name` 的 `tools` 列表是在默认选择上增删，而不是替换默认，
+	// 语义与 `defaultTools` 设置一致。
 	const toolModifiers = options.tools?.some(isToolModifier) ? options.tools : undefined;
 	const selectedToolNames = toolModifiers ? applyToolModifiers(defaultToolNames, toolModifiers) : options.tools;
 	const allowedToolNames = toolModifiers
@@ -293,14 +304,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const isExcludedTool = excludedToolNames ? createToolNameMatcher(excludedToolNames) : undefined;
 	const initialActiveToolNames = (selectedToolNames ?? defaultToolNames).filter((name) => !isExcludedTool?.(name));
 
-	// Create convertToLlm wrapper that filters images if blockImages is enabled (defense-in-depth)
+	// 包装 convertToLlm：开启 blockImages 时过滤掉图片（纵深防御）
 	const convertToLlmWithBlockImages = (messages: AgentMessage[]): Message[] => {
 		const converted = convertToLlm(messages);
-		// Check setting dynamically so mid-session changes take effect
+		// 每次调用时动态读配置，中途改动才能立即生效
 		if (!settingsManager.getBlockImages()) {
 			return converted;
 		}
-		// Filter out ImageContent from all messages, replacing with text placeholder
+		// 把所有消息里的 ImageContent 换成文字占位符
 		return converted.map((msg) => {
 			if (msg.role === "user" || msg.role === "toolResult") {
 				const content = msg.content;
@@ -313,7 +324,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							)
 							.filter(
 								(c, i, arr) =>
-									// Dedupe consecutive "Image reading is disabled." texts
+									// 去掉连续重复的 "Image reading is disabled." 文本
 									!(
 										c.type === "text" &&
 										c.text === "Image reading is disabled." &&
@@ -348,7 +359,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs(),
 			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,
 			maxRetryDelayMs: options.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
-			// Replaces the agent loop's default identity; read per request so telemetry changes apply at once.
+			// 取代循环默认的客户端身份；每次请求现读，使遥测设置立即生效。
 			identity: getClientIdentity(settingsManager),
 			transformHeaders: async (headers) =>
 				headerRunner?.hasHandlers("before_provider_headers")
@@ -356,8 +367,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					: headers,
 		};
 	};
-	// Warm only requests for the selected model. Requests a virtual selection routed, or that an
-	// extension redirected, may not be repeated by the next request, so warming them could be wasted.
+	// 只给选中模型的请求做保温。被虚拟选择路由或被扩展重定向的请求，下一次未必重复，
+	// 为它们预热可能是白费力气。
 	const cacheContextIsCurrent = (requestModel: Model<any>) => {
 		const messages = agent.state.messages;
 		return () => {
@@ -411,11 +422,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		convertToLlm: convertToLlmWithBlockImages,
 		streamFn: async (model, context, options) => {
 			const requestOptions = buildRequestOptions(options);
-			// Compaction and summaries use their own routing ids; only session requests
-			// replace the cache entry, so warming restarts from them. Keep warming while
-			// the current transcript still extends the request's prefix. Agent state may
-			// shallow-copy the messages array or refresh the model object without changing
-			// the provider request, so top-level object identity is not a valid cache key.
+			// 压缩与摘要走自己的路由 id，只有会话主请求会替换缓存项，所以从它们重新开始保温。
+			// 只要当前 transcript 仍在请求前缀之上延伸就继续保温。agent 状态可能浅拷贝消息数组
+			// 或刷新 model 对象而不改变实际请求，因此顶层对象引用不是可靠的缓存 key。
 			if (options?.sessionId === sessionManager.getSessionId()) {
 				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
 			}
@@ -436,16 +445,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
 	});
-	// This stream resolves auth through modelRuntime, so summaries must not pre-resolve it (#11520).
+	// 这个流函数自己通过 modelRuntime 解析凭据，所以摘要不应提前解析（#11520）。
 	markRuntimeStreamFunction(agent.streamFunction, modelRuntime);
 
-	// Restore missing settings metadata for older sessions.
+	// 为旧会话补上缺失的配置元数据。
 	if (hasExistingSession) {
 		if (!hasThinkingEntry) {
 			sessionManager.appendThinkingLevelChange(thinkingLevel);
 		}
 	} else {
-		// Save initial model and thinking level for new sessions so they can be restored on resume
+		// 新会话要记录初始模型与思考档位，resume 时才能恢复
 		if (model) {
 			sessionManager.appendModelChange(model.provider, model.id);
 		}

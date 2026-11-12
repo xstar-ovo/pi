@@ -1,3 +1,14 @@
+/**
+ * 文件功能：内置工具工厂 —— 8 个工具（read / bash / powershell / edit / write / grep / find / ls）的定义与创建。
+ *
+ * 本文件只负责“造工具”，不负责“选工具”：选哪些由 SettingsManager 的 defaultTools 与
+ * sdk.ts 的白名单/拒绝名单决定，最终的激活集在 AgentSession 的 _toolRegistry 里。
+ *
+ * 常用入口：
+ *   createCodingTools（约 195 行）    read / bash / edit / write
+ *   createReadOnlyTools              read / grep / find / ls
+ *   createAllTools                   全部 8 个，以名字为键的 Record
+ */
 export {
 	type BashOperations,
 	type BashSpawnContext,

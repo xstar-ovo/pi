@@ -1,8 +1,22 @@
-// Core session management
+/**
+ * 文件功能：SDK 公共出口 —— 包对外的全部导出。
+ *
+ * 这里只决定“外部能用到什么”，不含实现。想找具体实现，按下表跳转：
+ *   装配入口     → core/sdk.ts（createAgentSession）
+ *   会话抽象     → core/agent-session.ts
+ *   模型与凭据   → core/model-runtime.ts
+ *   配置         → core/settings-manager.ts
+ *   会话落盘     → core/session-manager.ts
+ *   资源发现     → core/resource-loader.ts / skills.ts / prompt-templates.ts
+ *   内置工具     → core/tools/index.ts
+ *   CLI 入口     → main.ts / cli/args.ts
+ */
+
+// 会话核心管理
 
 export { type Args, parseArgs } from "./cli/args.ts";
 
-// Config paths
+// 配置路径
 export {
 	CONFIG_DIR_NAME,
 	getAgentDir,
@@ -25,7 +39,7 @@ export {
 } from "./core/agent-session.ts";
 export { readStoredCredential } from "./core/auth-storage.ts";
 export type { CacheWarmingDecision, CacheWarmingStatus } from "./core/cache-warmer.ts";
-// Compaction
+// 压缩
 export {
 	type BranchPreparation,
 	type BranchSummaryResult,
@@ -50,7 +64,7 @@ export {
 	shouldCompact,
 } from "./core/compaction/index.ts";
 export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
-// Extension system
+// 扩展系统
 export type {
 	AfterProviderResponseEvent,
 	AgentActivityOutcome,
@@ -228,7 +242,7 @@ export type {
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
-// SDK for programmatic usage
+// 程序调用用的 SDK
 export {
 	AgentSessionRuntime,
 	type AgentSessionRuntimeDiagnostic,
@@ -239,13 +253,13 @@ export {
 	type CreateAgentSessionRuntimeFactory,
 	type CreateAgentSessionRuntimeResult,
 	type CreateAgentSessionServicesOptions,
-	// Factory
+	// 工厂函数
 	createAgentSession,
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 	createBashTool,
-	// Tool factories (for custom cwd)
+	// 工具工厂（用于自定义 cwd）
 	createCodingTools,
 	createEditTool,
 	createFindTool,
@@ -302,7 +316,7 @@ export {
 	type SettingsManagerCreateOptions,
 	type TuiMode,
 } from "./core/settings-manager.ts";
-// Skills
+// 技能
 export {
 	formatSkillsForPrompt,
 	type LoadSkillsFromDirOptions,
@@ -314,7 +328,7 @@ export {
 } from "./core/skills.ts";
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
 export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
-// Tools
+// 工具
 export {
 	type BashOperations,
 	type BashSpawnContext,
@@ -387,15 +401,15 @@ export {
 	type VirtualModelDefinition,
 	type VirtualModelStateData,
 } from "./core/virtual-models.ts";
-// Built-in extensions. The CLI loads them; SDK sessions add them to their extension factories.
+// 内置扩展。CLI 会加载它们；SDK 会话把它们加进自己的扩展工厂。
 export { type CodemodeExtensionOptions, createCodemodeExtension } from "./extensions/codemode/index.ts";
 export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/codemode/tool.ts";
 export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
-// Main entry point
+// 主入口
 export { type MainOptions, main } from "./main.ts";
-// Run modes for programmatic SDK usage
+// 供程序化 SDK 使用的运行模式
 export {
 	type JsonAgentSessionEvent,
 	RpcClient,
@@ -412,5 +426,5 @@ export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";
 export { convertToPng } from "./utils/image-convert.ts";
 export { formatDimensionNote, type ResizedImage, resizeImage } from "./utils/image-resize.ts";
 export { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
-// Shell utilities
+// shell 工具函数
 export { getPowerShellConfig, getShellConfig } from "./utils/shell.ts";
