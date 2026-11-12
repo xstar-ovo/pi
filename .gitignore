@@ -29,7 +29,6 @@ packages/ai/src/providers/.model-generation-*/
 coverage/
 .nyc_output/
 .pi_config/
-tui-debug.log
 compaction-results/
 .opencode/
 syntax.jsonl
@@ -37,12 +36,9 @@ out.jsonl
 pi-*.html
 out.html
 packages/coding-agent/binaries/
-packages/env/bin/
-packages/env/daemon/target/
 todo.md
 plans/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
 .pi/settings.json
 collect.sh
-packages/agent/docs/extensions/pi-server-artifact/index.md
