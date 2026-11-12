@@ -1,3 +1,13 @@
+/**
+ * 文件功能：异步事件流 —— 生产者 push，消费者 for await，最终值可单独 result() await。
+ *
+ * 一个约 135 行的类解决三件事（阶段 B 的事件传输就靠它）：
+ *   1. 生产者与消费者解耦：有消费者在等就直接给，否则排队
+ *   2. 最终结果通过 result() 单独 await，不用消费完全部事件
+ *   3. 结束后不丢已入队事件
+ *
+ * 自己用 async generator 手写这个，很容易写成丢事件或死锁。
+ */
 import type { AssistantMessage, AssistantMessageEvent } from "../types.ts";
 
 class FifoQueue<T> {
@@ -22,7 +32,7 @@ class FifoQueue<T> {
 	}
 }
 
-// Generic event stream class for async iteration
+// 通用的异步迭代事件流类
 export class EventStream<T, R = T> implements AsyncIterable<T> {
 	private queue = new FifoQueue<T>();
 	private waiting = new FifoQueue<(value: IteratorResult<T>) => void>();
@@ -48,7 +58,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 			this.resolveFinalResult(this.extractResult(event));
 		}
 
-		// Deliver to waiting consumer or queue it
+		// 有消费者在等就交给它，否则入队
 		const waiter = this.waiting.dequeue();
 		if (waiter) {
 			waiter({ value: event, done: false });
@@ -62,7 +72,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		if (result !== undefined) {
 			this.resolveFinalResult(result);
 		}
-		// Notify all waiting consumers that we're done
+		// 通知所有等待中的消费者：结束了
 		while (this.waiting.length > 0) {
 			const waiter = this.waiting.dequeue()!;
 			waiter({ value: undefined as any, done: true });
@@ -89,10 +99,9 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 }
 
 /**
- * Event stream of one assistant response. It also times the response: the final message (`done` or `error` event, or
- * the result passed to `end()`) gets `durationMs`, measured with a monotonic clock from the stream's creation, unless
- * the message already has one or its `timestamp` predates the stream. A stream that forwards a response which started
- * elsewhere, such as a deferred result fetched later, therefore leaves it untimed.
+ * 单次 assistant 回复的事件流。它同时给这次回复计时：最终消息（`done` 或 `error` 事件，或传给 `end()` 的结果）
+ * 会带上 `durationMs`，用单调时钟从流创建时开始计；但若消息已有该字段，或它的 `timestamp` 早于流的创建时间，
+ * 就不计时。因此“把别处已经开始的回复转发过来”的流（例如稍后才拿到的延时结果）不会被误计入耗时。
  */
 export class AssistantMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	readonly #startedAt = Date.now();
@@ -129,7 +138,7 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 	}
 }
 
-/** Factory function for AssistantMessageEventStream (for use in extensions) */
+/** AssistantMessageEventStream 的工厂函数（供扩展使用） */
 export function createAssistantMessageEventStream(): AssistantMessageEventStream {
 	return new AssistantMessageEventStream();
 }
